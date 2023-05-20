@@ -57,4 +57,25 @@ mod tests {
             "Q29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg=="
         );
     }
+
+    #[test]
+    fn single_xor_search() {
+        let (_, _, message) = include_str!("data/set4.txt")
+            .lines()
+            .flat_map(|cipher| {
+                (0x00..=0xff).map(move |key| {
+                    let plain: String = xor::bytewise(cipher.hex_decode(), iter::repeat(key))
+                        .map(char::from)
+                        .collect();
+                    (plain.bytes().ascii_freq_score(), key, plain)
+                })
+            })
+            .max_by(|(a, _, _), (b, _, _)| a.total_cmp(b))
+            .unwrap();
+
+        assert_eq!(
+            message.bytes().b64_encode().collect::<String>(),
+            "Tm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmcK"
+        );
+    }
 }
