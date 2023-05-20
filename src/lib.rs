@@ -1,10 +1,12 @@
 mod b64;
+mod freq;
 mod hex;
 
 #[cfg(test)]
 mod tests {
     use super::b64::*;
     use super::hex::*;
+    use super::*;
 
     #[test]
     fn hex_to_base64() {
@@ -29,5 +31,27 @@ mod tests {
             .hex_encode()
             .collect();
         assert_eq!(result, "746865206b696420646f6e277420706c6179");
+    }
+
+    #[test]
+    fn single_xor_cipher() {
+        let cipher: Vec<u8> =
+            "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
+                .bytes()
+                .hex_decode()
+                .collect();
+        let (key, _) = (0x00..=0xff)
+            .map(|key| {
+                let plain: Vec<u8> = cipher.iter().map(|c| c ^ key).collect();
+                (key, freq::analyze(&plain))
+            })
+            .reduce(|cur, next| if cur.1 > next.1 { cur } else { next })
+            .unwrap();
+
+        let result: String = cipher.iter().map(|c| (c ^ key) as char).collect();
+        assert_eq!(
+            result.bytes().b64_encode().collect::<String>(),
+            "Q29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg=="
+        );
     }
 }
