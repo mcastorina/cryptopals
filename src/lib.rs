@@ -40,18 +40,20 @@ mod tests {
                 .collect();
 
         // For each key, try decoding the cipher and rank the output.
-        // Find the key with the highest rank.
-        let (key, _) = (0x00..=0xff)
+        // Find the highest score, the key that provided the highest score, and the resulting
+        // decoded message.
+        let (_, _, message) = (0x00..=0xff)
             .map(|key| {
-                let plain = xor::bytewise(&cipher, iter::repeat(key));
-                (key, plain.ascii_freq_score())
+                let plain: String = xor::bytewise(&cipher, iter::repeat(key))
+                    .map(char::from)
+                    .collect();
+                (plain.bytes().ascii_freq_score(), key, plain)
             })
-            .reduce(|cur, next| if cur.1 > next.1 { cur } else { next })
+            .max_by(|(a, _, _), (b, _, _)| a.total_cmp(b))
             .unwrap();
 
-        let result: String = cipher.iter().map(|c| (c ^ key) as char).collect();
         assert_eq!(
-            result.bytes().b64_encode().collect::<String>(),
+            message.bytes().b64_encode().collect::<String>(),
             "Q29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg=="
         );
     }
