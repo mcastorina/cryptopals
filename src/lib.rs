@@ -1,12 +1,14 @@
 mod b64;
 mod freq;
 mod hex;
+mod xor;
 
 #[cfg(test)]
 mod tests {
     use super::b64::*;
     use super::hex::*;
     use super::*;
+    use std::iter;
 
     #[test]
     fn hex_to_base64() {
@@ -23,10 +25,7 @@ mod tests {
         let a = "1c0111001f010100061a024b53535009181c";
         let b = "686974207468652062756c6c277320657965";
 
-        let result: String = a
-            .hex_decode()
-            .zip(b.hex_decode())
-            .map(|(a, b)| a ^ b)
+        let result: String = xor::bytewise(a.hex_decode(), b.hex_decode())
             .hex_encode()
             .collect();
         assert_eq!(result, "746865206b696420646f6e277420706c6179");
@@ -43,7 +42,7 @@ mod tests {
         // Find the key with the highest rank.
         let (key, _) = (0x00..=0xff)
             .map(|key| {
-                let plain: Vec<u8> = cipher.iter().map(|c| c ^ key).collect();
+                let plain: Vec<u8> = xor::bytewise(&cipher, iter::repeat(key)).collect();
                 (key, freq::analyze(&plain))
             })
             .reduce(|cur, next| if cur.1 > next.1 { cur } else { next })
