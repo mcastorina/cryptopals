@@ -11,7 +11,7 @@ mod tests {
     #[test]
     fn hex_to_base64() {
         let input = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
-        let result: String = input.bytes().hex_decode().b64_encode().collect();
+        let result: String = input.hex_decode().b64_encode().collect();
         assert_eq!(
             result,
             "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
@@ -24,9 +24,8 @@ mod tests {
         let b = "686974207468652062756c6c277320657965";
 
         let result: String = a
-            .bytes()
             .hex_decode()
-            .zip(b.bytes().hex_decode())
+            .zip(b.hex_decode())
             .map(|(a, b)| a ^ b)
             .hex_encode()
             .collect();
@@ -37,7 +36,6 @@ mod tests {
     fn single_xor_cipher() {
         let cipher: Vec<u8> =
             "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-                .bytes()
                 .hex_decode()
                 .collect();
 

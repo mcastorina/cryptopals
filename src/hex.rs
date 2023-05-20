@@ -48,6 +48,21 @@ pub trait HexDecoderExt: Iterator {
 
 impl<I: Iterator> HexDecoderExt for I {}
 
+// Trait extension to add hex_decode method to anything that can be &str.
+pub trait HexDecoderStrExt<I> {
+    fn hex_decode(&self) -> HexDecoder<std::str::Bytes<'_>>
+    where
+        I: Iterator<Item = u8>;
+}
+
+impl<S: AsRef<str>> HexDecoderStrExt<std::str::Bytes<'_>> for S {
+    fn hex_decode(&self) -> HexDecoder<std::str::Bytes<'_>> {
+        HexDecoder {
+            upstream: self.as_ref().bytes(),
+        }
+    }
+}
+
 pub struct HexEncoder<I>
 where
     I: Iterator,
