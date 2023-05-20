@@ -6,6 +6,7 @@ mod xor;
 #[cfg(test)]
 mod tests {
     use super::b64::*;
+    use super::freq::*;
     use super::hex::*;
     use super::*;
     use std::iter;
@@ -42,8 +43,8 @@ mod tests {
         // Find the key with the highest rank.
         let (key, _) = (0x00..=0xff)
             .map(|key| {
-                let plain: Vec<u8> = xor::bytewise(&cipher, iter::repeat(key)).collect();
-                (key, freq::analyze(&plain))
+                let plain = xor::bytewise(&cipher, iter::repeat(key));
+                (key, plain.ascii_freq_score())
             })
             .reduce(|cur, next| if cur.1 > next.1 { cur } else { next })
             .unwrap();
