@@ -40,6 +40,9 @@ mod tests {
                 .bytes()
                 .hex_decode()
                 .collect();
+
+        // For each key, try decoding the cipher and rank the output.
+        // Find the key with the highest rank.
         let (key, _) = (0x00..=0xff)
             .map(|key| {
                 let plain: Vec<u8> = cipher.iter().map(|c| c ^ key).collect();

@@ -1,3 +1,4 @@
+// An iterator to convert hex-encoded characters into bytes.
 pub struct HexDecoder<I>
 where
     I: Iterator,
@@ -10,6 +11,8 @@ where
     I: Iterator,
     I::Item: Into<char>,
 {
+    // Get the next nibble from the upstream iterator. This function panics if it's not a hex
+    // digit. If there are no more items, None is returned.
     fn next_nibble(&mut self) -> Option<u8> {
         let c = self.upstream.next()?.into();
         // Intentionally panic if it's not a hex digit.
@@ -17,6 +20,7 @@ where
     }
 }
 
+// Implement Iterator trait for HexDecoder.
 impl<I> Iterator for HexDecoder<I>
 where
     I: Iterator,
@@ -32,6 +36,7 @@ where
     }
 }
 
+// Trait extension to add hex_decode method to any iterator.
 pub trait HexDecoderExt: Iterator {
     fn hex_decode(self) -> HexDecoder<Self>
     where
@@ -51,14 +56,16 @@ where
     nibble: Option<u8>,
 }
 
+// An iterator to convert bytes into hex-encoded characters.
 impl<I> HexEncoder<I>
 where
     I: Iterator,
     I::Item: Into<u8>,
 {
-    const LUT: &'static [u8] = b"0123456789abcdef";
+    const LUT: [u8; 16] = *b"0123456789abcdef";
 }
 
+// Implement Iterator trait for HexEncoder.
 impl<I> Iterator for HexEncoder<I>
 where
     I: Iterator,
@@ -69,10 +76,12 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let idx = match self.nibble {
             Some(n) => {
+                // Clear and emit the stored nibble.
                 self.nibble = None;
                 n as usize
             }
             None => {
+                // Read a byte and store the lower half for the next read.
                 let n = self.upstream.next()?.into();
                 self.nibble = Some(n & 0b1111);
                 (n >> 4) as usize
@@ -82,6 +91,7 @@ where
     }
 }
 
+// Trait extension to add hex_encode method to any iterator.
 pub trait HexEncoderExt: Iterator {
     fn hex_encode(self) -> HexEncoder<Self>
     where

@@ -1,3 +1,5 @@
+// Performs a frequency analysis on the provided bytes, returning the aggregate score of how likely
+// the data is to be English. The higher the score, the more likely.
 pub fn analyze(data: &[u8]) -> f64 {
     // Count the number of occurrences of the most common English letters.
     let mut counts = [0; 13];
