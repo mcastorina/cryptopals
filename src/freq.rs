@@ -11,6 +11,9 @@ pub trait FreqAnalyzerExt: Iterator {
         let mut len = 0;
         for b in self {
             let c = *b.borrow() as char;
+            if !c.is_ascii() {
+                return 0.0;
+            }
             if let Some(idx) = "etaoin shrdlu".find(c.to_ascii_lowercase()) {
                 counts[idx] += 1;
             }

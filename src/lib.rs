@@ -53,7 +53,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn single_xor_search() {
         let (score, message) = include_str!("data/set4.txt")
             .lines()
