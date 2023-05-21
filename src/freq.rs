@@ -56,7 +56,7 @@ where
 
 // Computes the hamming distance between two (same length) iterators. The distance is the number of
 // bits that differ.
-pub fn hamming<A, B>(a: A, b: B) -> u64
+pub fn hamming<A, B>(a: A, b: B) -> u32
 where
     A: IntoIterator,
     <A as IntoIterator>::Item: Borrow<u8>,
@@ -64,7 +64,7 @@ where
     <B as IntoIterator>::Item: Borrow<u8>,
 {
     use super::xor;
-    xor::bytewise(a, b).map(|b| b.count_ones() as u64).sum()
+    xor::bytewise(a, b).map(u8::count_ones).sum()
 }
 
 #[cfg(test)]
