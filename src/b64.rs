@@ -99,6 +99,94 @@ pub trait B64CollecterExt: Iterator {
 
 impl<I: Iterator> B64CollecterExt for I {}
 
+// An iterator to convert bytes into base64 encoded chars.
+pub struct B64Decoder<I>
+where
+    I: Iterator,
+{
+    upstream: I,
+    buffer: [Option<u8>; 4],
+    idx: usize,
+}
+
+impl<I> B64Decoder<I>
+where
+    I: Iterator,
+    I::Item: Borrow<char>,
+{
+    const LUT: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const PADDING: u8 = b'=';
+
+    // Find the next index into the LUT. If there are no more bytes from the upstream iterator,
+    // None is returned.
+    fn next_byte(&mut self) -> Option<u8> {
+        if self.idx == 0 {
+            self.refill_buffer();
+        }
+        if self.buffer.iter().all(Option::is_none) {
+            return None;
+        }
+        // 0      1      2      3
+        // 000000 001111 111122 222222
+        // Given the four characters, get the 8 bits of the data.
+        let result = match self.idx {
+            0 => (self.buffer[0]? << 2) | (self.buffer[1]? >> 4),
+            1 => (self.buffer[1]? << 4) | (self.buffer[2]? >> 2),
+            2 => (self.buffer[2]? << 6) | self.buffer[3]?,
+            _ => unreachable!(),
+        };
+        self.idx = (self.idx + 1) % 3;
+        Some(result)
+    }
+
+    // Read three bytes from the upstream iterator and store in the internal buffer.
+    fn refill_buffer(&mut self) {
+        for i in 0..self.buffer.len() {
+            self.buffer[i] = self
+                .upstream
+                .next()
+                .map(|b| *b.borrow() as u8)
+                .filter(|&b| b != Self::PADDING)
+                .map(|b| {
+                    Self::LUT
+                        .iter()
+                        .position(|&i| i == b)
+                        // Intentionally panic if it's not a base64 character.
+                        .expect("invalid character") as u8
+                });
+        }
+    }
+}
+
+// Implement Iterator trait for B64Decoder.
+impl<I> Iterator for B64Decoder<I>
+where
+    I: Iterator,
+    I::Item: Borrow<char>,
+{
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_byte()
+    }
+}
+
+// Trait extension to add b64_decode method to any iterator.
+pub trait B64DecoderExt: Iterator {
+    fn b64_decode(self) -> B64Decoder<Self>
+    where
+        Self: Sized,
+    {
+        B64Decoder {
+            upstream: self,
+            buffer: [None, None, None, None],
+            idx: 0,
+        }
+    }
+}
+
+impl<I: Iterator> B64DecoderExt for I {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +199,27 @@ mod tests {
         assert_eq!(result, "YWI=");
         let result: String = "abc".bytes().b64_encode().collect();
         assert_eq!(result, "YWJj");
+    }
+
+    #[test]
+    fn base64_to_bytes() {
+        let result: String = "YQ==".chars().b64_decode().map(char::from).collect();
+        assert_eq!(result, "a");
+        let result: String = "YWI=".chars().b64_decode().map(char::from).collect();
+        assert_eq!(result, "ab");
+        let result: String = "YWJj".chars().b64_decode().map(char::from).collect();
+        assert_eq!(result, "abc");
+    }
+
+    #[test]
+    fn base64_encode_decode() {
+        let data = &[0u8, 1, 2, 0xff, 0xfe, 13, 37];
+        for i in 0..data.len() {
+            let data = &data[..i];
+            assert_eq!(
+                data.iter().b64_encode().b64_decode().collect::<Vec<u8>>(),
+                data,
+            );
+        }
     }
 }
