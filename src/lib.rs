@@ -15,7 +15,7 @@ mod tests {
     #[test]
     fn hex_to_base64() {
         let input = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
-        let result: String = input.hex_decode().b64_encode().collect();
+        let result: String = input.hex_decode().b64_collect();
         assert_eq!(
             result,
             "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
@@ -47,7 +47,7 @@ mod tests {
         let (_, message) = freq::search(possible_messages).unwrap();
 
         assert_eq!(
-            message.iter().b64_encode().collect::<String>(),
+            message.iter().b64_collect::<String>(),
             "Q29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg=="
         );
     }
@@ -64,7 +64,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            message.iter().b64_encode().collect::<String>(),
+            message.iter().b64_collect::<String>(),
             "Tm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmcK"
         );
     }
@@ -74,7 +74,7 @@ mod tests {
         let message = "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
 
         assert_eq!(
-            message.bytes().xor_cycle(b"ICE").hex_encode().collect::<String>(),
+            message.bytes().xor_cycle(b"ICE").hex_collect::<String>(),
             "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
         );
     }

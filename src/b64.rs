@@ -85,6 +85,19 @@ pub trait B64EncoderExt: Iterator {
 
 impl<I: Iterator> B64EncoderExt for I {}
 
+// Trait extension to add b64_collect method to any iterator.
+pub trait B64CollecterExt: Iterator {
+    fn b64_collect<B>(self) -> B
+        where Self: Sized,
+              Self::Item: Borrow<u8>,
+              B: std::iter::FromIterator<char>,
+    {
+        self.b64_encode().collect()
+    }
+}
+
+impl<I: Iterator> B64CollecterExt for I {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

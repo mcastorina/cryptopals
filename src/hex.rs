@@ -121,6 +121,19 @@ pub trait HexEncoderExt: Iterator {
 
 impl<I: Iterator> HexEncoderExt for I {}
 
+// Trait extension to add hex_collect method to any iterator.
+pub trait HexCollecterExt: Iterator {
+    fn hex_collect<B>(self) -> B
+        where Self: Sized,
+              Self::Item: Into<u8>,
+              B: std::iter::FromIterator<char>,
+    {
+        self.hex_encode().collect()
+    }
+}
+
+impl<I: Iterator> HexCollecterExt for I {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
