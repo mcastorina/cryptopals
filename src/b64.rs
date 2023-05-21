@@ -116,6 +116,8 @@ where
 {
     const LUT: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     const PADDING: u8 = b'=';
+    const CR: u8 = b'\n';
+    const LF: u8 = b'\r';
 
     // Find the next index into the LUT. If there are no more bytes from the upstream iterator,
     // None is returned.
@@ -143,9 +145,8 @@ where
     fn refill_buffer(&mut self) {
         for i in 0..self.buffer.len() {
             self.buffer[i] = self
-                .upstream
-                .next()
-                .map(|b| *b.borrow() as u8)
+                .next_non_crlf_char()
+                .map(|b| b as u8)
                 .filter(|&b| b != Self::PADDING)
                 .map(|b| {
                     Self::LUT
@@ -154,6 +155,17 @@ where
                         // Intentionally panic if it's not a base64 character.
                         .expect("invalid character") as u8
                 });
+        }
+    }
+
+    // Read the next non-crlf character from upstream.
+    fn next_non_crlf_char(&mut self) -> Option<char> {
+        loop {
+            let c = *self.upstream.next()?.borrow();
+            if c == Self::CR as char || c == Self::LF as char {
+                continue;
+            }
+            return Some(c);
         }
     }
 }
