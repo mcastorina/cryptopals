@@ -41,7 +41,7 @@ pub fn analyze(data: &[u8]) -> f64 {
     data.iter().ascii_freq_score()
 }
 
-// Search through an iterator of items, returning the highest ranked vector.
+// Searches through an iterator of items, returning the highest ranked vector.
 pub fn search<T>(data: T) -> Option<(f64, Vec<u8>)>
 where
     T: IntoIterator,
@@ -52,4 +52,27 @@ where
         .map(|d| d.into_iter().map(|b| *b.borrow()).collect::<Vec<_>>())
         .map(|d| (analyze(&d), d))
         .max_by(|(a, _), (b, _)| a.total_cmp(b))
+}
+
+// Computes the hamming distance between two (same length) iterators. The distance is the number of
+// bits that differ.
+pub fn hamming<A, B>(a: A, b: B) -> u64
+where
+    A: IntoIterator,
+    <A as IntoIterator>::Item: Borrow<u8>,
+    B: IntoIterator,
+    <B as IntoIterator>::Item: Borrow<u8>,
+{
+    use super::xor;
+    xor::bytewise(a, b).map(|b| b.count_ones() as u64).sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hamming() {
+        assert_eq!(hamming(b"this is a test", b"wokka wokka!!!"), 37);
+    }
 }
