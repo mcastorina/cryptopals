@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 // An iterator to convert bytes into base64 encoded chars.
 pub struct B64Encoder<I>
 where
@@ -11,7 +13,7 @@ where
 impl<I> B64Encoder<I>
 where
     I: Iterator,
-    I::Item: Into<u8>,
+    I::Item: Borrow<u8>,
 {
     const LUT: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     const PADDING: u8 = b'=';
@@ -42,7 +44,7 @@ where
     // Read three bytes from the upstream iterator and store in the internal buffer.
     fn refill_buffer(&mut self) {
         for i in 0..self.buffer.len() {
-            self.buffer[i] = self.upstream.next().map(Into::into);
+            self.buffer[i] = self.upstream.next().map(|b| *b.borrow());
         }
     }
 }
@@ -51,7 +53,7 @@ where
 impl<I> Iterator for B64Encoder<I>
 where
     I: Iterator,
-    I::Item: Into<u8>,
+    I::Item: Borrow<u8>,
 {
     type Item = char;
 
