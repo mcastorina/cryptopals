@@ -1,5 +1,5 @@
 use std::borrow::Borrow;
-use std::iter::Cycle;
+use std::iter::{self, Cycle, Repeat};
 
 // Performs a byte-wise xor of two u8 iterators.
 pub fn bytewise<A, B>(a: A, b: B) -> impl Iterator<Item = u8>
@@ -56,3 +56,18 @@ pub trait XorCyclerExt: Iterator {
 }
 
 impl<I: Iterator> XorCyclerExt for I {}
+
+pub trait XorRepeaterExt: Iterator {
+    fn xor_repeat<T>(self, key: T) -> XorCycler<Self, Repeat<T>>
+    where
+        Self: Sized,
+        T: Clone,
+    {
+        XorCycler {
+            upstream: self,
+            key: iter::repeat(key),
+        }
+    }
+}
+
+impl<I: Iterator> XorRepeaterExt for I {}
