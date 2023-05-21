@@ -37,3 +37,16 @@ impl<I: Iterator> FreqAnalyzerExt for I {}
 pub fn analyze(data: &[u8]) -> f64 {
     data.iter().ascii_freq_score()
 }
+
+// Search through an iterator of items, returning the highest ranked vector.
+pub fn search<T>(data: T) -> Option<(f64, Vec<u8>)>
+where
+    T: IntoIterator,
+    <T as IntoIterator>::Item: IntoIterator,
+    <<T as IntoIterator>::Item as IntoIterator>::Item: Borrow<u8>,
+{
+    data.into_iter()
+        .map(|d| d.into_iter().map(|b| *b.borrow()).collect::<Vec<_>>())
+        .map(|d| (analyze(&d), d))
+        .max_by(|(a, _), (b, _)| a.total_cmp(b))
+}

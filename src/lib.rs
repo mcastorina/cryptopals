@@ -43,18 +43,11 @@ mod tests {
         // For each key, try decoding the cipher and rank the output.
         // Find the highest score, the key that provided the highest score, and the resulting
         // decoded message.
-        let (_, _, message) = (0x00..=0xff)
-            .map(|key| {
-                let plain: String = xor::bytewise(&cipher, iter::repeat(key))
-                    .map(char::from)
-                    .collect();
-                (plain.bytes().ascii_freq_score(), key, plain)
-            })
-            .max_by(|(a, _, _), (b, _, _)| a.total_cmp(b))
-            .unwrap();
+        let possible_messages = (0x00..=0xff).map(|key| cipher.iter().xor_repeat(key));
+        let (_, message) = freq::search(possible_messages).unwrap();
 
         assert_eq!(
-            message.bytes().b64_encode().collect::<String>(),
+            message.iter().b64_encode().collect::<String>(),
             "Q29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg=="
         );
     }
@@ -62,21 +55,17 @@ mod tests {
     #[test]
     #[ignore]
     fn single_xor_search() {
-        let (_, _, message) = include_str!("data/set4.txt")
+        let (score, message) = include_str!("data/set4.txt")
             .lines()
-            .flat_map(|cipher| {
-                (0x00..=0xff).map(move |key| {
-                    let plain: String = xor::bytewise(cipher.hex_decode(), iter::repeat(key))
-                        .map(char::from)
-                        .collect();
-                    (plain.bytes().ascii_freq_score(), key, plain)
-                })
+            .map(|cipher| cipher.hex_decode().collect::<Vec<_>>())
+            .filter_map(|cipher| {
+                freq::search((0x00..=0xff).map(|key| cipher.iter().xor_repeat(key)))
             })
-            .max_by(|(a, _, _), (b, _, _)| a.total_cmp(b))
+            .max_by(|(a, _), (b, _)| a.total_cmp(b))
             .unwrap();
 
         assert_eq!(
-            message.bytes().b64_encode().collect::<String>(),
+            message.iter().b64_encode().collect::<String>(),
             "Tm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmcK"
         );
     }
