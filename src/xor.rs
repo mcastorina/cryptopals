@@ -71,3 +71,15 @@ pub trait XorRepeaterExt: Iterator {
 }
 
 impl<I: Iterator> XorRepeaterExt for I {}
+
+pub fn search<T>(data: T) -> Option<(f64, u8)>
+where
+    T: IntoIterator,
+    <T as IntoIterator>::Item: Borrow<u8>,
+{
+    use super::freq::*;
+    let data: Vec<_> = data.into_iter().map(|b| *b.borrow()).collect();
+    (0x00..=0xff)
+        .map(|key| (data.iter().xor_repeat(key).ascii_freq_score(), key))
+        .max_by(|(a, _), (b, _)| a.total_cmp(b))
+}

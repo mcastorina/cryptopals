@@ -78,4 +78,54 @@ mod tests {
             "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
         );
     }
+
+    #[test]
+    fn break_repeating_xor() {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+
+        let cipher: Vec<u8> = include_str!("data/set6.txt").chars().b64_decode().collect();
+        let mut heap: BinaryHeap<_> = (2..=40)
+            .map(|key_size| {
+                // Take 20 distances and average them.
+                let hammings: Vec<_> = (0..20)
+                    .map(|skip| {
+                        let (first, second) = {
+                            let mut it = cipher.chunks(key_size).skip(skip);
+                            (it.next().unwrap(), it.next().unwrap())
+                        };
+                        freq::hamming(first, second)
+                    })
+                    .collect();
+                // Average our findings.
+                let avg_hamming = hammings.iter().sum::<u32>() / hammings.len() as u32;
+                // Fixed point representation because f64 isn't Ord.
+                let edit_dist = avg_hamming * 100_000 / key_size as u32;
+                (Reverse(edit_dist), key_size)
+            })
+            .collect();
+
+        // Try each key size until the plaintext is all ASCII.
+        let mut key: Option<String> = None;
+        let mut message: Option<String> = None;
+        while let Some((_, key_size)) = heap.pop() {
+            let k: String = (0..key_size)
+                .filter_map(|ofs| xor::search(cipher.iter().skip(ofs).step_by(key_size)))
+                .map(|(_, key)| key as char)
+                .collect();
+
+            let m: String = cipher.iter().xor_cycle(k.bytes()).map(char::from).collect();
+
+            if m.is_ascii() {
+                key = Some(k);
+                message = Some(m);
+                break;
+            }
+        }
+
+        assert_eq!(
+            key.unwrap().bytes().b64_collect::<String>(),
+            "VGVybWluYXRvciBYOiBCcmluZyB0aGUgbm9pc2U=",
+        );
+    }
 }
