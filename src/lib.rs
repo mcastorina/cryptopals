@@ -96,16 +96,16 @@ mod tests {
                         freq::hamming(first, second)
                     })
                     .collect();
-                // Average our findings.
-                let avg_hamming = hammings.iter().sum::<u32>() / hammings.len() as u32;
-                // Fixed point representation because f64 isn't Ord.
-                let edit_dist = avg_hamming * 100_000 / key_size as u32;
+                // Average our findings (fixed point).
+                let avg_hamming = hammings.iter().sum::<u32>() * 100 / hammings.len() as u32;
+                // Normalize by the key size (fixed point).
+                let edit_dist = avg_hamming * 1000 / key_size as u32;
                 (edit_dist, key_size)
             })
             .collect();
 
         // Sort key sizes by the edit distance.
-        key_sizes.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
+        key_sizes.sort_by(|(a, _), (b, _)| a.cmp(b));
 
         // Try each key size until the plaintext is all ASCII.
         let (key, _) = key_sizes
