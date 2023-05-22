@@ -81,11 +81,10 @@ mod tests {
 
     #[test]
     fn break_repeating_xor() {
-        use std::cmp::Reverse;
-        use std::collections::BinaryHeap;
-
         let cipher: Vec<u8> = include_str!("data/set6.txt").chars().b64_decode().collect();
-        let mut heap: BinaryHeap<_> = (2..=40)
+
+        // Find and rank key sizes.
+        let mut key_sizes: Vec<_> = (2..=40)
             .map(|key_size| {
                 // Take 20 distances and average them.
                 let hammings: Vec<_> = (0..20)
@@ -101,30 +100,43 @@ mod tests {
                 let avg_hamming = hammings.iter().sum::<u32>() / hammings.len() as u32;
                 // Fixed point representation because f64 isn't Ord.
                 let edit_dist = avg_hamming * 100_000 / key_size as u32;
-                (Reverse(edit_dist), key_size)
+                (edit_dist, key_size)
             })
             .collect();
 
+        // Sort key sizes by the edit distance.
+        key_sizes.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
+
         // Try each key size until the plaintext is all ASCII.
-        let mut key: Option<String> = None;
-        let mut message: Option<String> = None;
-        while let Some((_, key_size)) = heap.pop() {
-            let k: String = (0..key_size)
-                .filter_map(|ofs| xor::search(cipher.iter().skip(ofs).step_by(key_size)))
-                .map(|(_, key)| key as char)
-                .collect();
+        let (key, _) = key_sizes
+            .into_iter()
+            .find_map(|(_, key_size)| {
+                // Each index of the key is the best frequency analysis of that column of bytes.
+                //
+                // An iterator is constructed by first skipping an offset, then stepping every
+                // key_size bytes, which creates a sequence of bytes for the target column.
+                //
+                // xor::search returns the best single-byte-xor key that decodes the sequence, and
+                // then we can collect all of them to construct the key.
+                let key: String = (0..key_size)
+                    .filter_map(|ofs| xor::search(cipher.iter().skip(ofs).step_by(key_size)))
+                    .map(|(_, key)| key as char)
+                    .collect();
 
-            let m: String = cipher.iter().xor_cycle(k.bytes()).map(char::from).collect();
+                // Decode the cipher with our guessed key.
+                let message: String = cipher
+                    .iter()
+                    .xor_cycle(key.bytes())
+                    .map(char::from)
+                    .collect();
 
-            if m.is_ascii() {
-                key = Some(k);
-                message = Some(m);
-                break;
-            }
-        }
+                // If the message is all ASCII, it's safe to assume we found the correct key.
+                message.is_ascii().then_some((key, message))
+            })
+            .unwrap();
 
         assert_eq!(
-            key.unwrap().bytes().b64_collect::<String>(),
+            key.bytes().b64_collect::<String>(),
             "VGVybWluYXRvciBYOiBCcmluZyB0aGUgbm9pc2U=",
         );
     }
