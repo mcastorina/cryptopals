@@ -88,14 +88,10 @@ mod tests {
         let mut key_sizes: Vec<_> = (2..=40)
             .map(|key_size| {
                 // Take 20 distances and average them.
-                let hammings: Vec<_> = (0..20)
-                    .map(|skip| {
-                        let (first, second) = {
-                            let mut it = cipher.chunks(key_size).skip(skip);
-                            (it.next().unwrap(), it.next().unwrap())
-                        };
-                        freq::hamming(first, second)
-                    })
+                let mut chunks = cipher.chunks(key_size);
+                let hammings: Vec<_> = iter::from_fn(|| Some((chunks.next()?, chunks.next()?)))
+                    .take(20)
+                    .map(|(first, second)| freq::hamming(first, second))
                     .collect();
                 // Average our findings (fixed point).
                 let avg_hamming = hammings.iter().sum::<u32>() * 100 / hammings.len() as u32;
