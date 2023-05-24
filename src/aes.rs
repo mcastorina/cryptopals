@@ -69,7 +69,7 @@ fn gmul3(a: u8) -> u8 {
 }
 
 // TODO: turn this into a LUT
-fn rcon(mut value: u32) -> u8 {
+fn rcon(mut value: u32) -> u32 {
     let mut c = 1;
     if value == 0 {
         return 0;
@@ -78,7 +78,7 @@ fn rcon(mut value: u32) -> u8 {
         c = gmul2(c);
         value -= 1;
     }
-    c
+    (c as u32) << 24
 }
 
 const KEY_LENGTH: usize = 4;
@@ -94,19 +94,16 @@ fn sub_word(input: u32) -> u32 {
     ])
 }
 
-fn gen_round_keys(key: [u32; 4]) -> [u32; 40] {
-    let mut gen_keys: [u32; 40] = [0; 40];
-    for i in 0..40 {
-        if i < key.len() {
-            gen_keys[i] = key[i];
-            continue;
+fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
+    let mut gen_keys: [u32; 44] = [0; 44];
+    for i in 0..44 {
+        gen_keys[i] = if i < key.len() {
+            key[i]
         } else if i % 4 == 0 {
-            gen_keys[i] = gen_keys[i - 4]
-                ^ sub_word(gen_keys[i - 1].rotate_left(8))
-                ^ rcon((i / 4) as u32) as u32;
+            gen_keys[i - 4] ^ sub_word(gen_keys[i - 1].rotate_left(8)) ^ rcon((i / 4) as u32)
         } else {
-            gen_keys[i] = gen_keys[i - 4] ^ gen_keys[i - 1];
-        }
+            gen_keys[i - 4] ^ gen_keys[i - 1]
+        };
     }
     gen_keys
 }
@@ -216,21 +213,21 @@ fn encrypt(plain: &[u8], key: [u8; 16]) -> Vec<u8> {
     let round_keys = gen_round_keys(key);
     let mut cipher = Vec::with_capacity(plain.len());
     for block in plain.chunks(16) {
-        let mut block: [u8; 16] = dbg!(block.try_into().unwrap());
+        let mut block: [u8; 16] = block.try_into().unwrap();
         block = add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
 
-        for round in 1..=8 {
+        for round in 1..=9 {
             block = sub_bytes(block);
             block = shift_columns(block);
             block = mix_rows(block);
             block = add_round_key(
                 block,
-                round_key_to_bytes(&round_keys[dbg!(round * 4..(round + 1) * 4)]),
+                round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
             );
         }
         block = sub_bytes(block);
         block = shift_columns(block);
-        block = add_round_key(block, round_key_to_bytes(&round_keys[36..40]));
+        block = add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
         cipher.extend(block);
     }
     cipher
@@ -247,14 +244,14 @@ fn decrypt(cipher: &[u8], key: [u8; 16]) -> Vec<u8> {
     let mut plain = Vec::with_capacity(cipher.len());
     for block in cipher.chunks(16) {
         let mut block: [u8; 16] = block.try_into().unwrap();
-        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[36..40]));
+        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
         block = inv_shift_columns(block);
         block = inv_sub_bytes(block);
 
-        for round in (1..=8).rev() {
+        for round in (1..=9).rev() {
             block = inv_add_round_key(
                 block,
-                round_key_to_bytes(&round_keys[dbg!(round * 4..(round + 1) * 4)]),
+                round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
             );
             block = inv_mix_rows(block);
             block = inv_shift_columns(block);
