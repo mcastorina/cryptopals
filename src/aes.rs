@@ -94,7 +94,7 @@ fn sub_word(input: u32) -> u32 {
     ])
 }
 
-fn gen_keys_128(key: [u32; 4]) -> [u32; 40] {
+fn gen_round_keys(key: [u32; 4]) -> [u32; 40] {
     let mut gen_keys: [u32; 40] = [0; 40];
     for i in 0..40 {
         if i < key.len() {
@@ -118,10 +118,25 @@ fn sub_bytes(mut matrix: [u8; 16]) -> [u8; 16] {
     matrix
 }
 
-fn shift_rows(matrix: [u8; 16]) -> [u8; 16] {
+fn inv_sub_bytes(mut matrix: [u8; 16]) -> [u8; 16] {
+    for i in 0..matrix.len() {
+        matrix[i] = INVERSE_SBOX[matrix[i] as usize];
+    }
+    matrix
+}
+
+fn shift_columns(matrix: [u8; 16]) -> [u8; 16] {
     let mut shifted = [0; 16];
     for i in 0..matrix.len() {
         shifted[i] = matrix[(i * 5) % 16];
+    }
+    shifted
+}
+
+fn inv_shift_columns(matrix: [u8; 16]) -> [u8; 16] {
+    let mut shifted = [0; 16];
+    for i in 0..matrix.len() {
+        shifted[(i * 5) % 16] = matrix[i];
     }
     shifted
 }
@@ -133,6 +148,16 @@ fn mix_row(row: [u8; 4]) -> [u8; 4] {
         b0 ^ gmul2(b1) ^ gmul3(b2) ^ b3,
         b0 ^ b1 ^ gmul2(b2) ^ gmul3(b3),
         gmul3(b0) ^ b1 ^ b2 ^ gmul2(b3),
+    ]
+}
+
+fn inv_mix_row(row: [u8; 4]) -> [u8; 4] {
+    let [b0, b1, b2, b3] = row;
+    [
+        gmul(14, b0) ^ gmul(11, b1) ^ gmul(13, b2) ^ gmul(9, b3),
+        gmul(9, b0) ^ gmul(14, b1) ^ gmul(11, b2) ^ gmul(13, b3),
+        gmul(13, b0) ^ gmul(9, b1) ^ gmul(14, b2) ^ gmul(11, b3),
+        gmul(11, b0) ^ gmul(13, b1) ^ gmul(9, b2) ^ gmul(14, b3),
     ]
 }
 
@@ -148,11 +173,97 @@ fn mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
     matrix
 }
 
+fn inv_mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
+    for row in 0..4 {
+        for (ofs, result) in inv_mix_row(matrix[row * 4..row * 4 + 4].try_into().unwrap())
+            .into_iter()
+            .enumerate()
+        {
+            matrix[row * 4 + ofs] = result;
+        }
+    }
+    matrix
+}
+
 fn add_round_key(mut matrix: [u8; 16], round_key: [u8; 16]) -> [u8; 16] {
     for i in 0..matrix.len() {
         matrix[i] ^= round_key[i];
     }
     matrix
+}
+
+fn inv_add_round_key(matrix: [u8; 16], round_key: [u8; 16]) -> [u8; 16] {
+    add_round_key(matrix, round_key)
+}
+
+fn round_key_to_bytes(key: &[u32]) -> [u8; 16] {
+    assert_eq!(key.len(), 4);
+    key.iter()
+        .copied()
+        .flat_map(u32::to_be_bytes)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
+}
+
+fn encrypt(plain: &[u8], key: [u8; 16]) -> Vec<u8> {
+    let key = [
+        u32::from_be_bytes(key[0..4].try_into().unwrap()),
+        u32::from_be_bytes(key[4..8].try_into().unwrap()),
+        u32::from_be_bytes(key[8..12].try_into().unwrap()),
+        u32::from_be_bytes(key[12..16].try_into().unwrap()),
+    ];
+    let round_keys = gen_round_keys(key);
+    let mut cipher = Vec::with_capacity(plain.len());
+    for block in plain.chunks(16) {
+        let mut block: [u8; 16] = dbg!(block.try_into().unwrap());
+        block = add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
+
+        for round in 1..=8 {
+            block = sub_bytes(block);
+            block = shift_columns(block);
+            block = mix_rows(block);
+            block = add_round_key(
+                block,
+                round_key_to_bytes(&round_keys[dbg!(round * 4..(round + 1) * 4)]),
+            );
+        }
+        block = sub_bytes(block);
+        block = shift_columns(block);
+        block = add_round_key(block, round_key_to_bytes(&round_keys[36..40]));
+        cipher.extend(block);
+    }
+    cipher
+}
+
+fn decrypt(cipher: &[u8], key: [u8; 16]) -> Vec<u8> {
+    let key = [
+        u32::from_be_bytes(key[0..4].try_into().unwrap()),
+        u32::from_be_bytes(key[4..8].try_into().unwrap()),
+        u32::from_be_bytes(key[8..12].try_into().unwrap()),
+        u32::from_be_bytes(key[12..16].try_into().unwrap()),
+    ];
+    let round_keys = gen_round_keys(key);
+    let mut plain = Vec::with_capacity(cipher.len());
+    for block in cipher.chunks(16) {
+        let mut block: [u8; 16] = block.try_into().unwrap();
+        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[36..40]));
+        block = inv_shift_columns(block);
+        block = inv_sub_bytes(block);
+
+        for round in (1..=8).rev() {
+            block = inv_add_round_key(
+                block,
+                round_key_to_bytes(&round_keys[dbg!(round * 4..(round + 1) * 4)]),
+            );
+            block = inv_mix_rows(block);
+            block = inv_shift_columns(block);
+            block = inv_sub_bytes(block);
+        }
+        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
+        plain.extend(block);
+    }
+    plain
 }
 
 #[cfg(test)]
@@ -197,10 +308,18 @@ mod tests {
     }
 
     #[test]
-    fn test_shift_rows() {
+    fn test_inv_sub_bytes() {
+        assert_eq!(
+            inv_sub_bytes(sub_bytes(*b"The quick brown ")),
+            *b"The quick brown ",
+        );
+    }
+
+    #[test]
+    fn test_shift_columns() {
         #[rustfmt::skip]
         assert_eq!(
-            shift_rows([
+            shift_columns([
                 0x20, 0x45, 0x4d, 0xb7,
                 0xa3, 0x9d, 0xf9, 0xfb,
                 0x7f, 0xb7, 0xaa, 0x40,
@@ -212,6 +331,14 @@ mod tests {
                 0x7f, 0xf5, 0x4d, 0xfb,
                 0xa8, 0x45, 0xf9, 0x40,
             ],
+        );
+    }
+
+    #[test]
+    fn test_inv_shift_columns() {
+        assert_eq!(
+            inv_shift_columns(shift_columns(*b"yellow submarine")),
+            *b"yellow submarine",
         );
     }
 
@@ -234,6 +361,13 @@ mod tests {
         );
     }
 
+    fn test_inv_mix_rows() {
+        assert_eq!(
+            inv_mix_rows(mix_rows(*b"yellow submarine")),
+            *b"yellow submarine"
+        );
+    }
+
     #[test]
     fn test_add_round_key() {
         #[rustfmt::skip]
@@ -249,6 +383,37 @@ mod tests {
                 0xd2, 0xbd, 0x94, 0xcb,
                 0x25, 0xc8, 0x6d, 0xb8,
                 0x50, 0x1c, 0xab, 0xaf,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_inv_add_round_key() {
+        let key: [u8; 16] = *b"abcdefghijklmnop";
+        assert_eq!(
+            inv_add_round_key(add_round_key(*b"yellow submarine", key), key),
+            *b"yellow submarine"
+        );
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let key = *b"yellow submarine";
+        assert_eq!(
+            decrypt(&encrypt(b"abcdefghijklmnop", key), key),
+            b"abcdefghijklmnop",
+        );
+    }
+
+    #[test]
+    fn test_encrypt() {
+        let plain = b"ABCDEFGHIJKLMNOP";
+        let key = *b"YELLOW SUBMARINE";
+        assert_eq!(
+            encrypt(plain, key),
+            [
+                0xf5, 0x45, 0xc0, 0x06, 0x06, 0x91, 0x26, 0xd9, 0xc0, 0xf9, 0x3f, 0xa7, 0xdd, 0x89,
+                0xab, 0x98
             ],
         );
     }
