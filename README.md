@@ -245,3 +245,21 @@ fn break_repeating_xor() {
     );
 }
 ```
+
+## Challenge 7: AES in ECB mode
+
+
+The OpenSSL CLI tool is.. what it is. To decode the file, we give it this command:
+
+```bash
+openssl enc -d -a -aes-128-ecb -in src/data/set7.txt -K '59454c4c4f57205355424d4152494e45'
+# -d            decrypt the input
+# -a            base64 decode the input
+# -aes-128-ecb  cipher to use (AES-128 in ECB mode)
+# -in           input file
+# -K            hex-encoded key
+```
+
+I read [this
+article](https://medium.com/codex/aes-how-the-most-advanced-encryption-actually-works-b6341c44edb9)
+in an attempt to understand and implement AES myself.
