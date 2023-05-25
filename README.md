@@ -243,7 +243,7 @@ fn break_repeating_xor() {
 }
 ```
 
-## Challenge 7: AES in ECB mode
+## Challenge 1-7: AES in ECB mode
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/7)
 
@@ -262,8 +262,8 @@ I read [this article](https://medium.com/codex/aes-how-the-most-advanced-encrypt
 in an attempt to understand and implement AES myself, got a lot of help with
 the math and algorithm, and ultimately ended up with this beauty. It was very
 rewarding testing the algorithm piece by piece and seeing it all come together.
-The implementation could be better and certainly needs a lot more comments, but
-I'm happy with it.
+[The implementation](https://github.com/mcastorina/cryptopals/blob/2ec12a293154158790446617c80b594f77b4a277/src/aes.rs#L266)
+could be better and certainly needs a lot more comments, but I'm happy with it.
 
 Thanks to Oliver and Thomas for all their help!
 
