@@ -6,6 +6,7 @@ mod xor;
 
 #[cfg(test)]
 mod tests {
+    use super::aes::*;
     use super::b64::*;
     use super::freq::*;
     use super::hex::*;
@@ -44,7 +45,7 @@ mod tests {
         // For each key, try decoding the cipher and rank the output.
         // Find the highest score, the key that provided the highest score, and the resulting
         // decoded message.
-        let possible_messages = (0x00..=0xff).map(|key| cipher.iter().xor_repeat(key));
+        let possible_messages = (0x00..=0xff).map(|key| cipher.iter().xor_cycle(iter::once(key)));
         let (_, message) = freq::search(possible_messages).unwrap();
 
         assert_eq!(
@@ -140,9 +141,10 @@ mod tests {
 
     #[test]
     fn aes_decrypt() {
-        let cipher: Vec<u8> = include_str!("data/set7.txt").chars().b64_decode().collect();
-        let plain: String = aes::decrypt(&cipher, *b"YELLOW SUBMARINE")
-            .into_iter()
+        let plain: String = include_str!("data/set7.txt")
+            .chars()
+            .b64_decode()
+            .aes_decrypt(*b"YELLOW SUBMARINE")
             .map(char::from)
             .collect();
         assert_eq!(plain.lines().count(), 79);

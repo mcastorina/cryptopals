@@ -1,3 +1,7 @@
+use std::borrow::Borrow;
+use std::iter::Peekable;
+
+const KEY_SIZE: usize = 16;
 const BLOCK_SIZE: usize = 16;
 
 const SBOX: [u8; 256] = [
@@ -289,6 +293,107 @@ pub fn decrypt(cipher: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     strip_padding(&mut plain);
     plain
 }
+
+fn decrypt_with_round_keys(mut block: [u8; BLOCK_SIZE], round_keys: [u32; 44]) -> [u8; BLOCK_SIZE] {
+    block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
+    block = inv_shift_columns(block);
+    block = inv_sub_bytes(block);
+
+    for round in (1..=9).rev() {
+        block = inv_add_round_key(
+            block,
+            round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
+        );
+        block = inv_mix_rows(block);
+        block = inv_shift_columns(block);
+        block = inv_sub_bytes(block);
+    }
+    block = inv_add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
+    block
+}
+
+pub struct Aes128EcbDecryptor<I: Iterator> {
+    upstream: Peekable<I>,
+    round_keys: [u32; 44],
+    buffer_index: usize,
+    buffer_length: usize,
+    decrypted_buffer: [u8; BLOCK_SIZE],
+}
+
+impl<I: Iterator> Aes128EcbDecryptor<I>
+where
+    <I as Iterator>::Item: Borrow<u8>,
+{
+    fn refill_buffer(&mut self) -> Option<()> {
+        for i in 0..BLOCK_SIZE {
+            self.decrypted_buffer[i] = *self.upstream.next()?.borrow();
+        }
+        self.decrypted_buffer = decrypt_with_round_keys(self.decrypted_buffer, self.round_keys);
+        // We could have some padding.
+        self.buffer_length = BLOCK_SIZE - self.padding_count().unwrap_or(0);
+        Some(())
+    }
+
+    fn padding_count(&mut self) -> Option<usize> {
+        if self.upstream.peek().is_some() {
+            // There are still blocks to decrypt.
+            return None;
+        }
+        // Check current decrypted_buffer for padding.
+        let padding = self.decrypted_buffer[self.decrypted_buffer.len() - 1] as usize;
+        if !(0x1..=0xf).contains(&padding) {
+            return None;
+        }
+        self.decrypted_buffer
+            .iter()
+            .rev()
+            .take(padding)
+            .all(|&e| e as usize == padding)
+            .then_some(padding)
+    }
+}
+
+impl<I: Iterator> Iterator for Aes128EcbDecryptor<I>
+where
+    <I as Iterator>::Item: Borrow<u8>,
+{
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer_index == 0 {
+            self.refill_buffer()?;
+        }
+        if self.buffer_index >= self.buffer_length {
+            return None;
+        }
+        let next = self.decrypted_buffer[self.buffer_index];
+        self.buffer_index = (self.buffer_index + 1) % BLOCK_SIZE;
+        Some(next)
+    }
+}
+
+pub trait Aes128EcbDecryptorExt: Iterator {
+    fn aes_decrypt(self, key: [u8; KEY_SIZE]) -> Aes128EcbDecryptor<Self>
+    where
+        Self: Sized,
+    {
+        let key = [
+            u32::from_be_bytes(key[0..4].try_into().unwrap()),
+            u32::from_be_bytes(key[4..8].try_into().unwrap()),
+            u32::from_be_bytes(key[8..12].try_into().unwrap()),
+            u32::from_be_bytes(key[12..16].try_into().unwrap()),
+        ];
+        Aes128EcbDecryptor {
+            upstream: self.peekable(),
+            round_keys: gen_round_keys(key),
+            buffer_index: 0,
+            buffer_length: BLOCK_SIZE,
+            decrypted_buffer: [0; BLOCK_SIZE],
+        }
+    }
+}
+
+impl<I: Iterator> Aes128EcbDecryptorExt for I {}
 
 #[cfg(test)]
 mod tests {
