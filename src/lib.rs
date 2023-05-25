@@ -137,4 +137,14 @@ mod tests {
             "VGVybWluYXRvciBYOiBCcmluZyB0aGUgbm9pc2U=",
         );
     }
+
+    #[test]
+    fn aes_decrypt() {
+        let cipher: Vec<u8> = include_str!("data/set7.txt").chars().b64_decode().collect();
+        let plain: String = aes::decrypt(&cipher, *b"YELLOW SUBMARINE")
+            .into_iter()
+            .map(char::from)
+            .collect();
+        assert_eq!(plain.lines().count(), 79);
+    }
 }

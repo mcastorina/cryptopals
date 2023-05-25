@@ -1,3 +1,5 @@
+const BLOCK_SIZE: usize = 16;
+
 const SBOX: [u8; 256] = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -41,7 +43,7 @@ fn gmul(mut a: u8, mut b: u8) -> u8 {
 
     for _ in 0..8 {
         if (b & 0x1) != 0 {
-            prod = prod ^ a;
+            prod ^= a;
         }
 
         let high_a = (a & 0x80) != 0;
@@ -108,32 +110,32 @@ fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
     gen_keys
 }
 
-fn sub_bytes(mut matrix: [u8; 16]) -> [u8; 16] {
+fn sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] = SBOX[matrix[i] as usize];
     }
     matrix
 }
 
-fn inv_sub_bytes(mut matrix: [u8; 16]) -> [u8; 16] {
+fn inv_sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] = INVERSE_SBOX[matrix[i] as usize];
     }
     matrix
 }
 
-fn shift_columns(matrix: [u8; 16]) -> [u8; 16] {
-    let mut shifted = [0; 16];
+fn shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
+    let mut shifted = [0; BLOCK_SIZE];
     for i in 0..matrix.len() {
-        shifted[i] = matrix[(i * 5) % 16];
+        shifted[i] = matrix[(i * 5) % BLOCK_SIZE];
     }
     shifted
 }
 
-fn inv_shift_columns(matrix: [u8; 16]) -> [u8; 16] {
-    let mut shifted = [0; 16];
+fn inv_shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
+    let mut shifted = [0; BLOCK_SIZE];
     for i in 0..matrix.len() {
-        shifted[(i * 5) % 16] = matrix[i];
+        shifted[(i * 5) % BLOCK_SIZE] = matrix[i];
     }
     shifted
 }
@@ -158,9 +160,9 @@ fn inv_mix_row(row: [u8; 4]) -> [u8; 4] {
     ]
 }
 
-fn mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
+fn mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for row in 0..4 {
-        for (ofs, result) in mix_row(matrix[row * 4..row * 4 + 4].try_into().unwrap())
+        for (ofs, result) in mix_row(matrix[row * 4..(row + 1) * 4].try_into().unwrap())
             .into_iter()
             .enumerate()
         {
@@ -170,9 +172,9 @@ fn mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
     matrix
 }
 
-fn inv_mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
+fn inv_mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for row in 0..4 {
-        for (ofs, result) in inv_mix_row(matrix[row * 4..row * 4 + 4].try_into().unwrap())
+        for (ofs, result) in inv_mix_row(matrix[row * 4..(row + 1) * 4].try_into().unwrap())
             .into_iter()
             .enumerate()
         {
@@ -182,18 +184,18 @@ fn inv_mix_rows(mut matrix: [u8; 16]) -> [u8; 16] {
     matrix
 }
 
-fn add_round_key(mut matrix: [u8; 16], round_key: [u8; 16]) -> [u8; 16] {
+fn add_round_key(mut matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] ^= round_key[i];
     }
     matrix
 }
 
-fn inv_add_round_key(matrix: [u8; 16], round_key: [u8; 16]) -> [u8; 16] {
+fn inv_add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     add_round_key(matrix, round_key)
 }
 
-fn round_key_to_bytes(key: &[u32]) -> [u8; 16] {
+fn round_key_to_bytes(key: &[u32]) -> [u8; BLOCK_SIZE] {
     assert_eq!(key.len(), 4);
     key.iter()
         .copied()
@@ -203,7 +205,22 @@ fn round_key_to_bytes(key: &[u32]) -> [u8; 16] {
         .unwrap()
 }
 
-fn encrypt(plain: &[u8], key: [u8; 16]) -> Vec<u8> {
+fn strip_padding(block: &mut Vec<u8>) {
+    let padding = block[block.len() - 1] as usize;
+    if !(0x1..=0xf).contains(&padding) {
+        return;
+    }
+    if block
+        .iter()
+        .rev()
+        .take(padding)
+        .all(|&e| e as usize == padding)
+    {
+        block.truncate(block.len() - padding);
+    }
+}
+
+pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     let key = [
         u32::from_be_bytes(key[0..4].try_into().unwrap()),
         u32::from_be_bytes(key[4..8].try_into().unwrap()),
@@ -212,8 +229,14 @@ fn encrypt(plain: &[u8], key: [u8; 16]) -> Vec<u8> {
     ];
     let round_keys = gen_round_keys(key);
     let mut cipher = Vec::with_capacity(plain.len());
-    for block in plain.chunks(16) {
-        let mut block: [u8; 16] = block.try_into().unwrap();
+    for block in plain.chunks(BLOCK_SIZE) {
+        let mut block: [u8; BLOCK_SIZE] = if block.len() == BLOCK_SIZE {
+            block.try_into().unwrap()
+        } else {
+            let mut padded_block = [(BLOCK_SIZE - block.len()) as u8; BLOCK_SIZE];
+            padded_block[..block.len()].clone_from_slice(block);
+            padded_block
+        };
         block = add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
 
         for round in 1..=9 {
@@ -233,7 +256,7 @@ fn encrypt(plain: &[u8], key: [u8; 16]) -> Vec<u8> {
     cipher
 }
 
-fn decrypt(cipher: &[u8], key: [u8; 16]) -> Vec<u8> {
+pub fn decrypt(cipher: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     let key = [
         u32::from_be_bytes(key[0..4].try_into().unwrap()),
         u32::from_be_bytes(key[4..8].try_into().unwrap()),
@@ -242,8 +265,8 @@ fn decrypt(cipher: &[u8], key: [u8; 16]) -> Vec<u8> {
     ];
     let round_keys = gen_round_keys(key);
     let mut plain = Vec::with_capacity(cipher.len());
-    for block in cipher.chunks(16) {
-        let mut block: [u8; 16] = block.try_into().unwrap();
+    for block in cipher.chunks(BLOCK_SIZE) {
+        let mut block: [u8; BLOCK_SIZE] = block.try_into().unwrap();
         block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
         block = inv_shift_columns(block);
         block = inv_sub_bytes(block);
@@ -260,6 +283,7 @@ fn decrypt(cipher: &[u8], key: [u8; 16]) -> Vec<u8> {
         block = inv_add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
         plain.extend(block);
     }
+    strip_padding(&mut plain);
     plain
 }
 
@@ -397,8 +421,8 @@ mod tests {
     fn test_encrypt_decrypt() {
         let key = *b"yellow submarine";
         assert_eq!(
-            decrypt(&encrypt(b"abcdefghijklmnop", key), key),
-            b"abcdefghijklmnop",
+            decrypt(&encrypt(b"abcdefghijklmnopq", key), key),
+            b"abcdefghijklmnopq",
         );
     }
 
