@@ -147,6 +147,6 @@ mod tests {
             .aes_decrypt(*b"YELLOW SUBMARINE")
             .map(char::from)
             .collect();
-        assert_eq!(plain.lines().count(), 79);
+        assert_eq!(plain, include_str!("data/set7-plain.txt"));
     }
 }

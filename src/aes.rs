@@ -326,6 +326,8 @@ where
 {
     fn refill_buffer(&mut self) -> Option<()> {
         for i in 0..BLOCK_SIZE {
+            // Return early if we can't fill the buffer.
+            // We can only decrypt full BLOCK_SIZE blocks.
             self.decrypted_buffer[i] = *self.upstream.next()?.borrow();
         }
         self.decrypted_buffer = decrypt_with_round_keys(self.decrypted_buffer, self.round_keys);
