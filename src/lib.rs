@@ -149,4 +149,31 @@ mod tests {
             .collect();
         assert_eq!(plain, include_str!("data/set7-plain.txt"));
     }
+
+    #[test]
+    fn detect_aes_ecb() {
+        let line = include_str!("data/set8.txt")
+            .lines()
+            .max_by_key(|line| {
+                let data: Vec<u8> = line.chars().hex_decode().collect();
+                let chunks = data.chunks(aes::BLOCK_SIZE);
+                // Count the number of repeated chunks.
+                (0..)
+                    .map_while(|ofs| {
+                        let mut iter = chunks.clone().skip(ofs);
+                        let target = iter.next()?;
+                        Some(
+                            iter.filter(|&chunk| freq::hamming(chunk, target) == 0)
+                                .count(),
+                        )
+                    })
+                    .sum::<usize>()
+            })
+            .unwrap();
+
+        assert_eq!(
+            line.chars().hex_decode().take(32).b64_collect::<String>(),
+            "2IBhl0CooZt4QKijHIEKPQhkmvcNwG9P1dLWnHRM0oM=",
+        );
+    }
 }

@@ -17,6 +17,7 @@ Spoilers ahead!
     * [Challenge 1-5: Implement repeating-key XOR](#challenge-1-5-implement-repeating-key-xor)
     * [Challenge 1-6: Break repeating-key XOR](#challenge-1-6-break-repeating-key-xor)
     * [Challenge 1-7: AES in ECB mode](#challenge-1-7-aes-in-ecb-mode)
+    * [Challenge 1-8: Detect AES in ECB mode](#challenge-1-8-detect-aes-in-ecb-mode)
 
 
 ## Learnings
@@ -277,5 +278,44 @@ fn aes_ecb_decrypt() {
         .map(char::from)
         .collect();
     assert_eq!(plain, include_str!("data/set7-plain.txt"));
+}
+```
+
+
+## Challenge 1-8: Detect AES in ECB mode
+
+[Challenge link](https://cryptopals.com/sets/1/challenges/8)
+
+AES encrypted in ECB mode means the same 16 bytes of plaintext will be
+encrypted to the same 16 bytes of ciphertext. In order to find the one that was
+encrypted in the file, we can look for the line with the highest count of
+repeated ciphertext chunks.
+
+```rust
+#[test]
+fn detect_aes_ecb() {
+    let line = include_str!("data/set8.txt")
+        .lines()
+        .max_by_key(|line| {
+            let data: Vec<u8> = line.chars().hex_decode().collect();
+            let chunks = data.chunks(aes::BLOCK_SIZE);
+            // Count the number of repeated chunks.
+            (0..)
+                .map_while(|ofs| {
+                    let mut iter = chunks.clone().skip(ofs);
+                    let target = iter.next()?;
+                    Some(
+                        iter.filter(|&chunk| freq::hamming(chunk, target) == 0)
+                            .count(),
+                    )
+                })
+                .sum::<usize>()
+        })
+        .unwrap();
+
+    assert_eq!(
+        line.chars().hex_decode().take(32).b64_collect::<String>(),
+        "2IBhl0CooZt4QKijHIEKPQhkmvcNwG9P1dLWnHRM0oM=",
+    );
 }
 ```
