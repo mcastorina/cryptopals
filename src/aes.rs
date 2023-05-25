@@ -70,18 +70,19 @@ fn gmul3(a: u8) -> u8 {
     a ^ gmul2(a)
 }
 
-// TODO: turn this into a LUT
-fn rcon(mut value: u32) -> u32 {
-    let mut c = 1;
-    if value == 0 {
-        return 0;
-    }
-    while value != 1 {
-        c = gmul2(c);
-        value -= 1;
-    }
-    (c as u32) << 24
-}
+const ROUND_CONSTANTS: [u32; 11] = [
+    0x00_00_00_00,
+    0x01_00_00_00,
+    0x02_00_00_00,
+    0x04_00_00_00,
+    0x08_00_00_00,
+    0x10_00_00_00,
+    0x20_00_00_00,
+    0x40_00_00_00,
+    0x80_00_00_00,
+    0x1B_00_00_00,
+    0x36_00_00_00,
+];
 
 const KEY_LENGTH: usize = 4;
 const ROUND_KEY_LENGTH: usize = 40;
@@ -102,7 +103,9 @@ fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
         gen_keys[i] = if i < key.len() {
             key[i]
         } else if i % 4 == 0 {
-            gen_keys[i - 4] ^ sub_word(gen_keys[i - 1].rotate_left(8)) ^ rcon((i / 4) as u32)
+            gen_keys[i - 4]
+                ^ sub_word(gen_keys[i - 1].rotate_left(8))
+                ^ ROUND_CONSTANTS[(i / 4) as usize]
         } else {
             gen_keys[i - 4] ^ gen_keys[i - 1]
         };
