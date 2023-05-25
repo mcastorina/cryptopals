@@ -1,9 +1,14 @@
 use std::borrow::Borrow;
 use std::iter::Peekable;
 
+// AES supports three key sizes: 128-bit, 224-bit, and 256-bit. This implementation is only for
+// 128-bit (16-byte) key sizes.
 const KEY_SIZE: usize = 16;
+
+// AES, regardless of key size, always operates on a 4x4 matrix of bytes.
 pub const BLOCK_SIZE: usize = 16;
 
+// Substitution look-up table used during encryption rounds.
 const SBOX: [u8; 256] = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -23,6 +28,7 @@ const SBOX: [u8; 256] = [
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ];
 
+// Inverse substitution look-up table used during decryption rounds.
 const INVERSE_SBOX: [u8; 256] = [
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -42,6 +48,22 @@ const INVERSE_SBOX: [u8; 256] = [
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d,
 ];
 
+// Constants used during round key expansion.
+const ROUND_CONSTANTS: [u32; 11] = [
+    0x00_00_00_00,
+    0x01_00_00_00,
+    0x02_00_00_00,
+    0x04_00_00_00,
+    0x08_00_00_00,
+    0x10_00_00_00,
+    0x20_00_00_00,
+    0x40_00_00_00,
+    0x80_00_00_00,
+    0x1B_00_00_00,
+    0x36_00_00_00,
+];
+
+// Multiplication performed in GF(2^8) for polynomial x^8 + x^4 + x^3 + x + 1.
 fn gmul(mut a: u8, mut b: u8) -> u8 {
     let mut prod = 0;
 
@@ -61,6 +83,7 @@ fn gmul(mut a: u8, mut b: u8) -> u8 {
     prod
 }
 
+// Optimized gmul by 2.
 fn gmul2(a: u8) -> u8 {
     let high_bit = (a & 0x80) != 0;
     let mut b = a << 1;
@@ -70,27 +93,12 @@ fn gmul2(a: u8) -> u8 {
     b
 }
 
+// Optimized gmul by 3.
 fn gmul3(a: u8) -> u8 {
     a ^ gmul2(a)
 }
 
-const ROUND_CONSTANTS: [u32; 11] = [
-    0x00_00_00_00,
-    0x01_00_00_00,
-    0x02_00_00_00,
-    0x04_00_00_00,
-    0x08_00_00_00,
-    0x10_00_00_00,
-    0x20_00_00_00,
-    0x40_00_00_00,
-    0x80_00_00_00,
-    0x1B_00_00_00,
-    0x36_00_00_00,
-];
-
-const KEY_LENGTH: usize = 4;
-const ROUND_KEY_LENGTH: usize = 40;
-
+// Helper function to substitute each of the 4 bytes in a word.
 fn sub_word(input: u32) -> u32 {
     let indices = input.to_be_bytes();
     u32::from_be_bytes([
@@ -101,6 +109,8 @@ fn sub_word(input: u32) -> u32 {
     ])
 }
 
+// Generate the round keys given the initial 128-bit key. For 128-bit keys, 11 round keys are
+// generated.
 fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
     let mut gen_keys: [u32; 44] = [0; 44];
     for i in 0..44 {
@@ -117,6 +127,7 @@ fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
     gen_keys
 }
 
+// Substitute all the bytes in a block using SBOX.
 fn sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] = SBOX[matrix[i] as usize];
@@ -124,6 +135,7 @@ fn sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     matrix
 }
 
+// Substitute all the bytes in a block using INVERSE_SBOX.
 fn inv_sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] = INVERSE_SBOX[matrix[i] as usize];
@@ -131,6 +143,8 @@ fn inv_sub_bytes(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     matrix
 }
 
+// Rotate each column of the matrix down. The first column doesn't rotate, the second column
+// rotates by 1, the third by 2, and the fourth by 3.
 fn shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     let mut shifted = [0; BLOCK_SIZE];
     for i in 0..matrix.len() {
@@ -139,6 +153,7 @@ fn shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     shifted
 }
 
+// Invert the rotation performed by shift_columns.
 fn inv_shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     let mut shifted = [0; BLOCK_SIZE];
     for i in 0..matrix.len() {
@@ -147,6 +162,7 @@ fn inv_shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     shifted
 }
 
+// Perform matrix multiplication in GF(2^8) for a single row.
 fn mix_row(row: [u8; 4]) -> [u8; 4] {
     let [b0, b1, b2, b3] = row;
     [
@@ -157,6 +173,7 @@ fn mix_row(row: [u8; 4]) -> [u8; 4] {
     ]
 }
 
+// Invert the matrix multiplication performed in mix_row.
 fn inv_mix_row(row: [u8; 4]) -> [u8; 4] {
     let [b0, b1, b2, b3] = row;
     [
@@ -167,6 +184,7 @@ fn inv_mix_row(row: [u8; 4]) -> [u8; 4] {
     ]
 }
 
+// Perform matrix multiplication on each row of the block.
 fn mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for row in 0..4 {
         for (ofs, result) in mix_row(matrix[row * 4..(row + 1) * 4].try_into().unwrap())
@@ -179,6 +197,7 @@ fn mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     matrix
 }
 
+// Invert the matrix multiplication performed in mix_rows.
 fn inv_mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for row in 0..4 {
         for (ofs, result) in inv_mix_row(matrix[row * 4..(row + 1) * 4].try_into().unwrap())
@@ -191,6 +210,7 @@ fn inv_mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     matrix
 }
 
+// Add the round key to the block in GF(2^8), which happens to correspond to a byte-wise XOR.
 fn add_round_key(mut matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     for i in 0..matrix.len() {
         matrix[i] ^= round_key[i];
@@ -198,10 +218,13 @@ fn add_round_key(mut matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [
     matrix
 }
 
+// Invert the addition done in add_round_key.
 fn inv_add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
+    // Because we know addition is an XOR, reversing it is equivalent to XORing again.
     add_round_key(matrix, round_key)
 }
 
+// Helper function to convert a slice of [u32; 4] to [u8; 16].
 fn round_key_to_bytes(key: &[u32]) -> [u8; BLOCK_SIZE] {
     assert_eq!(key.len(), 4);
     key.iter()
@@ -212,6 +235,7 @@ fn round_key_to_bytes(key: &[u32]) -> [u8; BLOCK_SIZE] {
         .unwrap()
 }
 
+// Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 fn strip_padding(block: &mut Vec<u8>) {
     let padding = block[block.len() - 1] as usize;
     if !(0x1..=0xf).contains(&padding) {
@@ -227,6 +251,8 @@ fn strip_padding(block: &mut Vec<u8>) {
     }
 }
 
+// Encrypt a plaintext blob of bytes using AES-128 in ECB mode. PKCS#7 padding will be added to the
+// plaintext as needed.
 pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     let key = [
         u32::from_be_bytes(key[0..4].try_into().unwrap()),
@@ -263,6 +289,8 @@ pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     cipher
 }
 
+// Decrypt a blob of bytes in AES-128 ECB mode. Any PKCS#7 padding will be removed from the
+// plaintext.
 pub fn decrypt(cipher: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     let key = [
         u32::from_be_bytes(key[0..4].try_into().unwrap()),
@@ -273,27 +301,16 @@ pub fn decrypt(cipher: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
     let round_keys = gen_round_keys(key);
     let mut plain = Vec::with_capacity(cipher.len());
     for block in cipher.chunks(BLOCK_SIZE) {
-        let mut block: [u8; BLOCK_SIZE] = block.try_into().unwrap();
-        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
-        block = inv_shift_columns(block);
-        block = inv_sub_bytes(block);
-
-        for round in (1..=9).rev() {
-            block = inv_add_round_key(
-                block,
-                round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
-            );
-            block = inv_mix_rows(block);
-            block = inv_shift_columns(block);
-            block = inv_sub_bytes(block);
-        }
-        block = inv_add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
-        plain.extend(block);
+        plain.extend(decrypt_with_round_keys(
+            block.try_into().unwrap(),
+            round_keys,
+        ));
     }
     strip_padding(&mut plain);
     plain
 }
 
+// Helper function to perform decryption given a single block and the generated round keys.
 fn decrypt_with_round_keys(mut block: [u8; BLOCK_SIZE], round_keys: [u32; 44]) -> [u8; BLOCK_SIZE] {
     block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
     block = inv_shift_columns(block);
@@ -312,6 +329,7 @@ fn decrypt_with_round_keys(mut block: [u8; BLOCK_SIZE], round_keys: [u32; 44]) -
     block
 }
 
+// Iterator struct for decrypting a byte stream from AES-128 in ECB mode.
 pub struct Aes128EcbDecryptor<I: Iterator> {
     upstream: Peekable<I>,
     round_keys: [u32; 44],
@@ -336,6 +354,7 @@ where
         Some(())
     }
 
+    // Get the PKCS#7 padding count of a block. Returns None when there are still more blocks to decrypt.
     fn padding_count(&mut self) -> Option<usize> {
         if self.upstream.peek().is_some() {
             // There are still blocks to decrypt.
@@ -355,6 +374,7 @@ where
     }
 }
 
+// Implement Iterator trait for Aes128EcbDecryptor.
 impl<I: Iterator> Iterator for Aes128EcbDecryptor<I>
 where
     <I as Iterator>::Item: Borrow<u8>,
@@ -374,6 +394,7 @@ where
     }
 }
 
+// Trait extension to add aes_decrypt method to any iterator.
 pub trait Aes128EcbDecryptorExt: Iterator {
     fn aes_decrypt(self, key: [u8; KEY_SIZE]) -> Aes128EcbDecryptor<Self>
     where
