@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn aes_decrypt() {
+    fn aes_ecb_decrypt() {
         let plain: String = include_str!("data/set7.txt")
             .chars()
             .b64_decode()

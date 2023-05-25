@@ -16,6 +16,7 @@ Spoilers ahead!
     * [Challenge 1-4: Detect single-character XOR](#challenge-1-4-detect-single-character-xor)
     * [Challenge 1-5: Implement repeating-key XOR](#challenge-1-5-implement-repeating-key-xor)
     * [Challenge 1-6: Break repeating-key XOR](#challenge-1-6-break-repeating-key-xor)
+    * [Challenge 1-7: AES in ECB mode](#challenge-1-7-aes-in-ecb-mode)
 
 
 ## Learnings
@@ -244,6 +245,7 @@ fn break_repeating_xor() {
 
 ## Challenge 7: AES in ECB mode
 
+[Challenge link](https://cryptopals.com/sets/1/challenges/7)
 
 The OpenSSL CLI tool is.. what it is. To decode the file, we give it this command:
 
@@ -256,6 +258,24 @@ openssl enc -d -a -aes-128-ecb -in src/data/set7.txt -K '59454c4c4f57205355424d4
 # -K            hex-encoded key
 ```
 
-I read [this
-article](https://medium.com/codex/aes-how-the-most-advanced-encryption-actually-works-b6341c44edb9)
-in an attempt to understand and implement AES myself.
+I read [this article](https://medium.com/codex/aes-how-the-most-advanced-encryption-actually-works-b6341c44edb9)
+in an attempt to understand and implement AES myself, got a lot of help with
+the math and algorithm, and ultimately ended up with this beauty. It was very
+rewarding testing the algorithm piece by piece and seeing it all come together.
+The implementation could be better and certainly needs a lot more comments, but
+I'm happy with it.
+
+Thanks to Oliver and Thomas for all their help!
+
+```rust
+#[test]
+fn aes_ecb_decrypt() {
+    let plain: String = include_str!("data/set7.txt")
+        .chars()
+        .b64_decode()
+        .aes_decrypt(*b"YELLOW SUBMARINE")
+        .map(char::from)
+        .collect();
+    assert_eq!(plain.lines().count(), 79);
+}
+```
