@@ -18,6 +18,9 @@ Spoilers ahead!
     * [Challenge 1-6: Break repeating-key XOR](#challenge-1-6-break-repeating-key-xor)
     * [Challenge 1-7: AES in ECB mode](#challenge-1-7-aes-in-ecb-mode)
     * [Challenge 1-8: Detect AES in ECB mode](#challenge-1-8-detect-aes-in-ecb-mode)
+* [Set 2: Block crypto](#set-2-block-crypto)
+    * [Challenge 2-9: Implement PKCS#7 padding](#challenge-2-9-implement-pkcs7-padding)
+    * [Challenge 2-10: Implement CBC mode](#challenge-2-10-implement-cbc-mode)
 
 
 ## Learnings
@@ -63,7 +66,7 @@ fn hex_to_base64() {
 ```
 
 
-## Challenge 1-2: Fixed XOR
+### Challenge 1-2: Fixed XOR
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/2)
 
@@ -85,7 +88,7 @@ fn hex_xor() {
 ```
 
 
-## Challenge 1-3: Single-byte XOR cipher
+### Challenge 1-3: Single-byte XOR cipher
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/3)
 
@@ -117,7 +120,7 @@ fn single_xor_cipher() {
 ```
 
 
-## Challenge 1-4: Detect single-character XOR
+### Challenge 1-4: Detect single-character XOR
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/4)
 
@@ -146,7 +149,7 @@ fn single_xor_search() {
 ```
 
 
-## Challenge 1-5: Implement repeating-key XOR
+### Challenge 1-5: Implement repeating-key XOR
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/5)
 
@@ -169,7 +172,7 @@ fn repeating_xor_cipher() {
 ```
 
 
-## Challenge 1-6: Break repeating-key XOR
+### Challenge 1-6: Break repeating-key XOR
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/6)
 
@@ -244,7 +247,7 @@ fn break_repeating_xor() {
 }
 ```
 
-## Challenge 1-7: AES in ECB mode
+### Challenge 1-7: AES in ECB mode
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/7)
 
@@ -274,7 +277,7 @@ fn aes_ecb_decrypt() {
     let plain: String = include_str!("data/set7.txt")
         .chars()
         .b64_decode()
-        .aes_decrypt(*b"YELLOW SUBMARINE")
+        .aes_ecb_decrypt(*b"YELLOW SUBMARINE")
         .map(char::from)
         .collect();
     assert_eq!(plain, include_str!("data/set7-plain.txt"));
@@ -282,7 +285,7 @@ fn aes_ecb_decrypt() {
 ```
 
 
-## Challenge 1-8: Detect AES in ECB mode
+### Challenge 1-8: Detect AES in ECB mode
 
 [Challenge link](https://cryptopals.com/sets/1/challenges/8)
 
@@ -317,5 +320,59 @@ fn detect_aes_ecb() {
         line.chars().hex_decode().take(32).b64_collect::<String>(),
         "2IBhl0CooZt4QKijHIEKPQhkmvcNwG9P1dLWnHRM0oM=",
     );
+}
+```
+
+## Set 2: Block crypto
+
+### Challenge 2-9: Implement PKCS#7 padding
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/9)
+
+I had actually already implemented this as part of [AES in ECB mode](#challenge-1-7-aes-in-ecb-mode).
+Here's the relevant implementation:
+
+```rust
+// Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
+fn strip_padding(block: &mut Vec<u8>) {
+    let padding = block[block.len() - 1] as usize;
+    if !(0x1..=0xf).contains(&padding) {
+        return;
+    }
+    if block
+        .iter()
+        .rev()
+        .take(padding)
+        .all(|&e| e as usize == padding)
+    {
+        block.truncate(block.len() - padding);
+    }
+}
+```
+
+### Challenge 2-10: Implement CBC mode
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/10)
+
+This was a fun addition to my current implementation that didn't take too much
+work. I decided to make another trait extension for an `aes_cbc_decrypt(key,
+iv)` iterator method. I used the `openssl` CLI tool to confirm my code decrypts
+correctly. You'll notice it's pretty similar to the ECB mode incantation, but
+we have to give it an initialization vector.
+
+```bash
+openssl enc -d -a -aes-128-cbc -in src/data/set10.txt -K '59454c4c4f57205355424d4152494e45' -iv 0
+```
+
+```rust
+#[test]
+fn aes_cbc_decrypt() {
+    let plain: String = include_str!("data/set10.txt")
+        .chars()
+        .b64_decode()
+        .aes_cbc_decrypt(*b"YELLOW SUBMARINE", Default::default())
+        .map(char::from)
+        .collect();
+    assert_eq!(plain, include_str!("data/set10-plain.txt"));
 }
 ```
