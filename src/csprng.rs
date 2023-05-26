@@ -20,7 +20,7 @@ pub fn gen<T: Copy>() -> T {
         // Convert raw pointer into a slice of u8.
         let mut slice = slice::from_raw_parts_mut(ptr, size);
         // Fill the slice with bytes from /dev/urandom.
-        f.read(&mut slice).unwrap();
+        f.read_exact(&mut slice).unwrap();
         *(ptr as *mut T)
     }
 }
