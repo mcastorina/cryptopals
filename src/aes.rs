@@ -265,57 +265,6 @@ fn inv_add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [
     xor::fixed(matrix, round_key)
 }
 
-// Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
-fn strip_padding(block: &mut Vec<u8>) {
-    let padding = block[block.len() - 1] as usize;
-    if !(0x1..=0xf).contains(&padding) {
-        return;
-    }
-    if block
-        .iter()
-        .rev()
-        .take(padding)
-        .all(|&e| e as usize == padding)
-    {
-        block.truncate(block.len() - padding);
-    }
-}
-
-// Encrypt a plaintext blob of bytes using AES-128 in ECB mode. PKCS#7 padding will be added to the
-// plaintext as needed.
-pub fn encrypt(plain: &[u8], key: impl Into<Key128>) -> Vec<u8> {
-    let round_keys = key.into().round_keys();
-    let mut cipher = Vec::with_capacity(plain.len());
-    for block in plain.chunks(BLOCK_SIZE) {
-        let mut block: [u8; BLOCK_SIZE] = if block.len() == BLOCK_SIZE {
-            block.try_into().unwrap()
-        } else {
-            let mut padded_block = [(BLOCK_SIZE - block.len()) as u8; BLOCK_SIZE];
-            padded_block[..block.len()].clone_from_slice(block);
-            padded_block
-        };
-        block = add_round_key(block, round_keys[0]);
-
-        for round in 1..=9 {
-            block = sub_bytes(block);
-            block = shift_columns(block);
-            block = mix_rows(block);
-            block = add_round_key(block, round_keys[round]);
-        }
-        block = sub_bytes(block);
-        block = shift_columns(block);
-        block = add_round_key(block, round_keys[10]);
-        cipher.extend(block);
-    }
-    cipher
-}
-
-// Decrypt a blob of bytes in AES-128 ECB mode. Any PKCS#7 padding will be removed from the
-// plaintext.
-pub fn decrypt(cipher: &[u8], key: impl Into<Key128>) -> Vec<u8> {
-    cipher.iter().aes_ecb_decrypt(key).collect()
-}
-
 // Helper function to perform decryption given a single block and the generated round keys.
 fn decrypt_block(mut block: [u8; BLOCK_SIZE], round_keys: [RoundKey; 11]) -> [u8; BLOCK_SIZE] {
     block = inv_add_round_key(block, round_keys[10]);
@@ -332,7 +281,23 @@ fn decrypt_block(mut block: [u8; BLOCK_SIZE], round_keys: [RoundKey; 11]) -> [u8
     block
 }
 
-// Iterator struct for decrypting a byte stream from AES-128 in ECB mode.
+// Helper function to perform encryption given a single block and the generated round keys.
+fn encrypt_block(mut block: [u8; BLOCK_SIZE], round_keys: [RoundKey; 11]) -> [u8; BLOCK_SIZE] {
+    block = add_round_key(block, round_keys[0]);
+
+    for round in 1..=9 {
+        block = sub_bytes(block);
+        block = shift_columns(block);
+        block = mix_rows(block);
+        block = add_round_key(block, round_keys[round]);
+    }
+    block = sub_bytes(block);
+    block = shift_columns(block);
+    block = add_round_key(block, round_keys[10]);
+    block
+}
+
+// Iterator struct for decrypting a byte stream from AES-128.
 pub struct Aes128Decryptor<I: Iterator> {
     upstream: Peekable<I>,
     round_keys: [RoundKey; 11],
@@ -440,6 +405,100 @@ pub trait Aes128CbcDecryptorExt: Iterator {
 }
 
 impl<I: Iterator> Aes128CbcDecryptorExt for I {}
+
+// Iterator struct for encrypting a byte stream in AES-128.
+pub struct Aes128Encryptor<I: Iterator> {
+    upstream: I,
+    round_keys: [RoundKey; 11],
+    buffer_index: usize,
+    encrypted_buffer: [u8; BLOCK_SIZE],
+    chain: Option<[u8; BLOCK_SIZE]>,
+}
+
+impl<I: Iterator> Aes128Encryptor<I>
+where
+    <I as Iterator>::Item: Borrow<u8>,
+{
+    fn refill_buffer(&mut self) -> Option<()> {
+        // Get a block of plaintext from the upstream iterator.
+        let mut plain = [0; BLOCK_SIZE];
+        for i in 0..BLOCK_SIZE {
+            if let Some(b) = self.upstream.next() {
+                // We still have plaintext to encrypt.
+                plain[i] = *b.borrow();
+            } else if i > 0 {
+                // We ran out of plaintext, so pad the rest.
+                let size = BLOCK_SIZE - i;
+                plain[i..].clone_from_slice(&[size as u8; 16][..size]);
+                break;
+            } else {
+                // We don't have any more plaintext to encrypt.
+                return None;
+            }
+        }
+        if let Some(chain) = self.chain {
+            self.encrypted_buffer = encrypt_block(xor::fixed(plain, chain), self.round_keys);
+            // Save the chain for the next encryption block.
+            self.chain = Some(self.encrypted_buffer);
+        } else {
+            self.encrypted_buffer = encrypt_block(plain, self.round_keys);
+        }
+        Some(())
+    }
+}
+
+// Implement Iterator trait for Aes128Encryptor.
+impl<I: Iterator> Iterator for Aes128Encryptor<I>
+where
+    <I as Iterator>::Item: Borrow<u8>,
+{
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer_index == 0 {
+            self.refill_buffer()?;
+        }
+        let next = self.encrypted_buffer[self.buffer_index];
+        self.buffer_index = (self.buffer_index + 1) % BLOCK_SIZE;
+        Some(next)
+    }
+}
+
+// Trait extension to add aes_ecb_encrypt method to any iterator.
+pub trait Aes128EcbEncryptorExt: Iterator {
+    fn aes_ecb_encrypt(self, key: impl Into<Key128>) -> Aes128Encryptor<Self>
+    where
+        Self: Sized,
+    {
+        Aes128Encryptor {
+            upstream: self,
+            round_keys: key.into().round_keys(),
+            buffer_index: 0,
+            encrypted_buffer: [0; BLOCK_SIZE],
+            chain: None,
+        }
+    }
+}
+
+impl<I: Iterator> Aes128EcbEncryptorExt for I {}
+
+// Trait extension to add aes_cbc_encrypt method to any iterator.
+pub trait Aes128CbcEncryptorExt: Iterator {
+    fn aes_cbc_encrypt(self, key: impl Into<Key128>, iv: [u8; BLOCK_SIZE]) -> Aes128Encryptor<Self>
+    where
+        Self: Sized,
+    {
+        Aes128Encryptor {
+            upstream: self,
+            round_keys: key.into().round_keys(),
+            buffer_index: 0,
+            encrypted_buffer: [0; BLOCK_SIZE],
+            chain: Some(iv),
+        }
+    }
+}
+
+impl<I: Iterator> Aes128CbcEncryptorExt for I {}
 
 #[cfg(test)]
 mod tests {
@@ -572,23 +631,65 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypt_decrypt() {
+    fn test_encrypt_decrypt_ecb() {
         let key = *b"yellow submarine";
+        let plain = "abcdefghijklmnopq";
         assert_eq!(
-            decrypt(&encrypt(b"abcdefghijklmnopq", key), key),
-            b"abcdefghijklmnopq",
+            plain
+                .bytes()
+                .aes_ecb_encrypt(key)
+                .aes_ecb_decrypt(key)
+                .map(char::from)
+                .collect::<String>(),
+            plain,
         );
     }
 
     #[test]
-    fn test_encrypt() {
+    fn test_encrypt_decrypt_cbc() {
+        let key = *b"yellow submarine";
+        let iv = *b"foo bar baz buzz";
+        let plain = "abcdefghijklmnopq";
+        assert_eq!(
+            plain
+                .bytes()
+                .aes_cbc_encrypt(key, iv)
+                .aes_cbc_decrypt(key, iv)
+                .map(char::from)
+                .collect::<String>(),
+            plain,
+        );
+    }
+
+    #[test]
+    fn test_encrypt_ecb() {
         let plain = b"ABCDEFGHIJKLMNOP";
         let key = *b"YELLOW SUBMARINE";
+        #[rustfmt::skip]
         assert_eq!(
-            encrypt(plain, key),
+            plain.iter().aes_ecb_encrypt(key).collect::<Vec<_>>(),
             [
-                0xf5, 0x45, 0xc0, 0x06, 0x06, 0x91, 0x26, 0xd9, 0xc0, 0xf9, 0x3f, 0xa7, 0xdd, 0x89,
-                0xab, 0x98
+                0xf5, 0x45, 0xc0, 0x06,
+                0x06, 0x91, 0x26, 0xd9,
+                0xc0, 0xf9, 0x3f, 0xa7,
+                0xdd, 0x89, 0xab, 0x98
+            ],
+        );
+    }
+
+    #[test]
+    fn test_encrypt_cbc() {
+        let plain = "ABCDEFGHIJKLMNOP";
+        let key = *b"YELLOW SUBMARINE";
+        let iv = [0; 16];
+        #[rustfmt::skip]
+        assert_eq!(
+            plain.bytes().aes_cbc_encrypt(key, iv).collect::<Vec<_>>(),
+            [
+                0xf5, 0x45, 0xc0, 0x06,
+                0x06, 0x91, 0x26, 0xd9,
+                0xc0, 0xf9, 0x3f, 0xa7,
+                0xdd, 0x89, 0xab, 0x98,
             ],
         );
     }
