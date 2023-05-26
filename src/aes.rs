@@ -63,6 +63,67 @@ const ROUND_CONSTANTS: [u32; 11] = [
     0x36_00_00_00,
 ];
 
+// Wrapper Key128 type for a better organized API.
+#[derive(Copy, Clone)]
+pub struct Key128([u8; KEY_SIZE]);
+
+// Alias for a better organized API.
+type RoundKey = [u8; BLOCK_SIZE];
+
+impl Key128 {
+    // Generate the round keys given the initial 128-bit key. For 128-bit keys, 11 round keys are
+    // generated.
+    fn round_keys(self) -> [RoundKey; 11] {
+        let key = self.as_words();
+        // Calculate each key word.
+        let mut gen_keys: [u32; 44] = [0; 44];
+        for i in 0..44 {
+            gen_keys[i] = if i < key.len() {
+                key[i]
+            } else if i % 4 == 0 {
+                gen_keys[i - 4]
+                    ^ sub_word(gen_keys[i - 1].rotate_left(8))
+                    ^ ROUND_CONSTANTS[(i / 4) as usize]
+            } else {
+                gen_keys[i - 4] ^ gen_keys[i - 1]
+            };
+        }
+
+        // Create iterator over each byte of the flattened words.
+        let mut bytes = gen_keys
+            .chunks(4)
+            .flat_map(|chunk| chunk.iter().copied().flat_map(u32::to_be_bytes));
+
+        // Build the array of RoundKeys one byte at a time.
+        let mut round_keys = [[0; BLOCK_SIZE]; 11];
+        for key in 0..round_keys.len() {
+            for byte in 0..BLOCK_SIZE {
+                // It's safe to unwrap here.
+                // We are iterating over exactly 176 bytes (4 * 44 = 11 * 16).
+                round_keys[key][byte] = bytes.next().unwrap();
+            }
+        }
+        round_keys
+    }
+
+    // Convert [u8; 16] into [u32; 4] for easier processing during round key generation.
+    fn as_words(self) -> [u32; 4] {
+        let buf = self.0;
+        [
+            u32::from_be_bytes([buf[0x0], buf[0x1], buf[0x2], buf[0x3]]),
+            u32::from_be_bytes([buf[0x4], buf[0x5], buf[0x6], buf[0x7]]),
+            u32::from_be_bytes([buf[0x8], buf[0x9], buf[0xa], buf[0xb]]),
+            u32::from_be_bytes([buf[0xc], buf[0xd], buf[0xe], buf[0xf]]),
+        ]
+    }
+}
+
+impl From<[u8; KEY_SIZE]> for Key128 {
+    fn from(block: [u8; KEY_SIZE]) -> Self {
+        Self(block)
+    }
+}
+
 // Multiplication performed in GF(2^8) for polynomial x^8 + x^4 + x^3 + x + 1.
 fn gmul(mut a: u8, mut b: u8) -> u8 {
     let mut prod = 0;
@@ -107,24 +168,6 @@ fn sub_word(input: u32) -> u32 {
         SBOX[indices[2] as usize],
         SBOX[indices[3] as usize],
     ])
-}
-
-// Generate the round keys given the initial 128-bit key. For 128-bit keys, 11 round keys are
-// generated.
-fn gen_round_keys(key: [u32; 4]) -> [u32; 44] {
-    let mut gen_keys: [u32; 44] = [0; 44];
-    for i in 0..44 {
-        gen_keys[i] = if i < key.len() {
-            key[i]
-        } else if i % 4 == 0 {
-            gen_keys[i - 4]
-                ^ sub_word(gen_keys[i - 1].rotate_left(8))
-                ^ ROUND_CONSTANTS[(i / 4) as usize]
-        } else {
-            gen_keys[i - 4] ^ gen_keys[i - 1]
-        };
-    }
-    gen_keys
 }
 
 // Substitute all the bytes in a block using SBOX.
@@ -224,17 +267,6 @@ fn inv_add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [
     add_round_key(matrix, round_key)
 }
 
-// Helper function to convert a slice of [u32; 4] to [u8; 16].
-fn round_key_to_bytes(key: &[u32]) -> [u8; BLOCK_SIZE] {
-    assert_eq!(key.len(), 4);
-    key.iter()
-        .copied()
-        .flat_map(u32::to_be_bytes)
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap()
-}
-
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 fn strip_padding(block: &mut Vec<u8>) {
     let padding = block[block.len() - 1] as usize;
@@ -253,14 +285,8 @@ fn strip_padding(block: &mut Vec<u8>) {
 
 // Encrypt a plaintext blob of bytes using AES-128 in ECB mode. PKCS#7 padding will be added to the
 // plaintext as needed.
-pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
-    let key = [
-        u32::from_be_bytes(key[0..4].try_into().unwrap()),
-        u32::from_be_bytes(key[4..8].try_into().unwrap()),
-        u32::from_be_bytes(key[8..12].try_into().unwrap()),
-        u32::from_be_bytes(key[12..16].try_into().unwrap()),
-    ];
-    let round_keys = gen_round_keys(key);
+pub fn encrypt(plain: &[u8], key: impl Into<Key128>) -> Vec<u8> {
+    let round_keys = key.into().round_keys();
     let mut cipher = Vec::with_capacity(plain.len());
     for block in plain.chunks(BLOCK_SIZE) {
         let mut block: [u8; BLOCK_SIZE] = if block.len() == BLOCK_SIZE {
@@ -270,20 +296,17 @@ pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
             padded_block[..block.len()].clone_from_slice(block);
             padded_block
         };
-        block = add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
+        block = add_round_key(block, round_keys[0]);
 
         for round in 1..=9 {
             block = sub_bytes(block);
             block = shift_columns(block);
             block = mix_rows(block);
-            block = add_round_key(
-                block,
-                round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
-            );
+            block = add_round_key(block, round_keys[round]);
         }
         block = sub_bytes(block);
         block = shift_columns(block);
-        block = add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
+        block = add_round_key(block, round_keys[10]);
         cipher.extend(block);
     }
     cipher
@@ -291,48 +314,30 @@ pub fn encrypt(plain: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
 
 // Decrypt a blob of bytes in AES-128 ECB mode. Any PKCS#7 padding will be removed from the
 // plaintext.
-pub fn decrypt(cipher: &[u8], key: [u8; BLOCK_SIZE]) -> Vec<u8> {
-    let key = [
-        u32::from_be_bytes(key[0..4].try_into().unwrap()),
-        u32::from_be_bytes(key[4..8].try_into().unwrap()),
-        u32::from_be_bytes(key[8..12].try_into().unwrap()),
-        u32::from_be_bytes(key[12..16].try_into().unwrap()),
-    ];
-    let round_keys = gen_round_keys(key);
-    let mut plain = Vec::with_capacity(cipher.len());
-    for block in cipher.chunks(BLOCK_SIZE) {
-        plain.extend(decrypt_with_round_keys(
-            block.try_into().unwrap(),
-            round_keys,
-        ));
-    }
-    strip_padding(&mut plain);
-    plain
+pub fn decrypt(cipher: &[u8], key: impl Into<Key128>) -> Vec<u8> {
+    cipher.iter().aes_decrypt(key).collect()
 }
 
 // Helper function to perform decryption given a single block and the generated round keys.
-fn decrypt_with_round_keys(mut block: [u8; BLOCK_SIZE], round_keys: [u32; 44]) -> [u8; BLOCK_SIZE] {
-    block = inv_add_round_key(block, round_key_to_bytes(&round_keys[40..44]));
+fn decrypt_block(mut block: [u8; BLOCK_SIZE], round_keys: [RoundKey; 11]) -> [u8; BLOCK_SIZE] {
+    block = inv_add_round_key(block, round_keys[10]);
     block = inv_shift_columns(block);
     block = inv_sub_bytes(block);
 
     for round in (1..=9).rev() {
-        block = inv_add_round_key(
-            block,
-            round_key_to_bytes(&round_keys[round * 4..(round + 1) * 4]),
-        );
+        block = inv_add_round_key(block, round_keys[round]);
         block = inv_mix_rows(block);
         block = inv_shift_columns(block);
         block = inv_sub_bytes(block);
     }
-    block = inv_add_round_key(block, round_key_to_bytes(&round_keys[0..4]));
+    block = inv_add_round_key(block, round_keys[0]);
     block
 }
 
 // Iterator struct for decrypting a byte stream from AES-128 in ECB mode.
 pub struct Aes128EcbDecryptor<I: Iterator> {
     upstream: Peekable<I>,
-    round_keys: [u32; 44],
+    round_keys: [RoundKey; 11],
     buffer_index: usize,
     buffer_length: usize,
     decrypted_buffer: [u8; BLOCK_SIZE],
@@ -348,7 +353,7 @@ where
             // We can only decrypt full BLOCK_SIZE blocks.
             self.decrypted_buffer[i] = *self.upstream.next()?.borrow();
         }
-        self.decrypted_buffer = decrypt_with_round_keys(self.decrypted_buffer, self.round_keys);
+        self.decrypted_buffer = decrypt_block(self.decrypted_buffer, self.round_keys);
         // We could have some padding.
         self.buffer_length = BLOCK_SIZE - self.padding_count().unwrap_or(0);
         Some(())
@@ -396,19 +401,13 @@ where
 
 // Trait extension to add aes_decrypt method to any iterator.
 pub trait Aes128EcbDecryptorExt: Iterator {
-    fn aes_decrypt(self, key: [u8; KEY_SIZE]) -> Aes128EcbDecryptor<Self>
+    fn aes_decrypt(self, key: impl Into<Key128>) -> Aes128EcbDecryptor<Self>
     where
         Self: Sized,
     {
-        let key = [
-            u32::from_be_bytes(key[0..4].try_into().unwrap()),
-            u32::from_be_bytes(key[4..8].try_into().unwrap()),
-            u32::from_be_bytes(key[8..12].try_into().unwrap()),
-            u32::from_be_bytes(key[12..16].try_into().unwrap()),
-        ];
         Aes128EcbDecryptor {
             upstream: self.peekable(),
-            round_keys: gen_round_keys(key),
+            round_keys: key.into().round_keys(),
             buffer_index: 0,
             buffer_length: BLOCK_SIZE,
             decrypted_buffer: [0; BLOCK_SIZE],
