@@ -144,7 +144,7 @@ mod tests {
         let plain: String = include_str!("data/set7.txt")
             .chars()
             .b64_decode()
-            .aes_decrypt(*b"YELLOW SUBMARINE")
+            .aes_ecb_decrypt(*b"YELLOW SUBMARINE")
             .map(char::from)
             .collect();
         assert_eq!(plain, include_str!("data/set7-plain.txt"));
@@ -175,5 +175,16 @@ mod tests {
             line.chars().hex_decode().take(32).b64_collect::<String>(),
             "2IBhl0CooZt4QKijHIEKPQhkmvcNwG9P1dLWnHRM0oM=",
         );
+    }
+
+    #[test]
+    fn aes_cbc_decrypt() {
+        let plain: String = include_str!("data/set10.txt")
+            .chars()
+            .b64_decode()
+            .aes_cbc_decrypt(*b"YELLOW SUBMARINE", Default::default())
+            .map(char::from)
+            .collect();
+        assert_eq!(plain, include_str!("data/set10-plain.txt"));
     }
 }

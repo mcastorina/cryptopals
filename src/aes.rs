@@ -1,3 +1,4 @@
+use crate::xor;
 use std::borrow::Borrow;
 use std::iter::Peekable;
 
@@ -254,17 +255,14 @@ fn inv_mix_rows(mut matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
 }
 
 // Add the round key to the block in GF(2^8), which happens to correspond to a byte-wise XOR.
-fn add_round_key(mut matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
-    for i in 0..matrix.len() {
-        matrix[i] ^= round_key[i];
-    }
-    matrix
+fn add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
+    xor::fixed(matrix, round_key)
 }
 
 // Invert the addition done in add_round_key.
 fn inv_add_round_key(matrix: [u8; BLOCK_SIZE], round_key: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
     // Because we know addition is an XOR, reversing it is equivalent to XORing again.
-    add_round_key(matrix, round_key)
+    xor::fixed(matrix, round_key)
 }
 
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
@@ -315,7 +313,7 @@ pub fn encrypt(plain: &[u8], key: impl Into<Key128>) -> Vec<u8> {
 // Decrypt a blob of bytes in AES-128 ECB mode. Any PKCS#7 padding will be removed from the
 // plaintext.
 pub fn decrypt(cipher: &[u8], key: impl Into<Key128>) -> Vec<u8> {
-    cipher.iter().aes_decrypt(key).collect()
+    cipher.iter().aes_ecb_decrypt(key).collect()
 }
 
 // Helper function to perform decryption given a single block and the generated round keys.
@@ -335,25 +333,31 @@ fn decrypt_block(mut block: [u8; BLOCK_SIZE], round_keys: [RoundKey; 11]) -> [u8
 }
 
 // Iterator struct for decrypting a byte stream from AES-128 in ECB mode.
-pub struct Aes128EcbDecryptor<I: Iterator> {
+pub struct Aes128Decryptor<I: Iterator> {
     upstream: Peekable<I>,
     round_keys: [RoundKey; 11],
     buffer_index: usize,
     buffer_length: usize,
     decrypted_buffer: [u8; BLOCK_SIZE],
+    chain: Option<[u8; BLOCK_SIZE]>,
 }
 
-impl<I: Iterator> Aes128EcbDecryptor<I>
+impl<I: Iterator> Aes128Decryptor<I>
 where
     <I as Iterator>::Item: Borrow<u8>,
 {
     fn refill_buffer(&mut self) -> Option<()> {
+        let mut cipher = [0; BLOCK_SIZE];
         for i in 0..BLOCK_SIZE {
             // Return early if we can't fill the buffer.
             // We can only decrypt full BLOCK_SIZE blocks.
-            self.decrypted_buffer[i] = *self.upstream.next()?.borrow();
+            cipher[i] = *self.upstream.next()?.borrow();
         }
-        self.decrypted_buffer = decrypt_block(self.decrypted_buffer, self.round_keys);
+        self.decrypted_buffer = decrypt_block(cipher, self.round_keys);
+        if let Some(chain) = self.chain {
+            self.decrypted_buffer = xor::fixed(self.decrypted_buffer, chain);
+            self.chain = Some(cipher);
+        }
         // We could have some padding.
         self.buffer_length = BLOCK_SIZE - self.padding_count().unwrap_or(0);
         Some(())
@@ -379,8 +383,8 @@ where
     }
 }
 
-// Implement Iterator trait for Aes128EcbDecryptor.
-impl<I: Iterator> Iterator for Aes128EcbDecryptor<I>
+// Implement Iterator trait for Aes128Decryptor.
+impl<I: Iterator> Iterator for Aes128Decryptor<I>
 where
     <I as Iterator>::Item: Borrow<u8>,
 {
@@ -399,23 +403,43 @@ where
     }
 }
 
-// Trait extension to add aes_decrypt method to any iterator.
+// Trait extension to add aes_ecb_decrypt method to any iterator.
 pub trait Aes128EcbDecryptorExt: Iterator {
-    fn aes_decrypt(self, key: impl Into<Key128>) -> Aes128EcbDecryptor<Self>
+    fn aes_ecb_decrypt(self, key: impl Into<Key128>) -> Aes128Decryptor<Self>
     where
         Self: Sized,
     {
-        Aes128EcbDecryptor {
+        Aes128Decryptor {
             upstream: self.peekable(),
             round_keys: key.into().round_keys(),
             buffer_index: 0,
             buffer_length: BLOCK_SIZE,
             decrypted_buffer: [0; BLOCK_SIZE],
+            chain: None,
         }
     }
 }
 
 impl<I: Iterator> Aes128EcbDecryptorExt for I {}
+
+// Trait extension to add aes_cbc_decrypt method to any iterator.
+pub trait Aes128CbcDecryptorExt: Iterator {
+    fn aes_cbc_decrypt(self, key: impl Into<Key128>, iv: [u8; BLOCK_SIZE]) -> Aes128Decryptor<Self>
+    where
+        Self: Sized,
+    {
+        Aes128Decryptor {
+            upstream: self.peekable(),
+            round_keys: key.into().round_keys(),
+            buffer_index: 0,
+            buffer_length: BLOCK_SIZE,
+            decrypted_buffer: [0; BLOCK_SIZE],
+            chain: Some(iv),
+        }
+    }
+}
+
+impl<I: Iterator> Aes128CbcDecryptorExt for I {}
 
 #[cfg(test)]
 mod tests {

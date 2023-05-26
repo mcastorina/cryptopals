@@ -14,6 +14,14 @@ where
         .map(|(a, b)| a.borrow() ^ b.borrow())
 }
 
+pub fn fixed<const SIZE: usize>(a: impl AsRef<[u8]>, b: impl AsRef<[u8]>) -> [u8; SIZE] {
+    let mut output = [0; SIZE];
+    for (i, v) in bytewise(a.as_ref(), b.as_ref()).enumerate() {
+        output[i] = v;
+    }
+    output
+}
+
 // An iterator to emit xor bytes of two iterators.
 pub struct XorCycler<I, J>
 where
