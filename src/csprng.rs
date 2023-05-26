@@ -15,13 +15,17 @@ pub fn gen<T: Copy>() -> T {
         let layout = alloc::Layout::new::<T>();
         let ptr = alloc::alloc(layout);
         if ptr.is_null() {
+            // Abort on error.
             alloc::handle_alloc_error(layout);
         }
         // Convert raw pointer into a slice of u8.
         let mut slice = slice::from_raw_parts_mut(ptr, size);
         // Fill the slice with bytes from /dev/urandom.
         f.read_exact(&mut slice).unwrap();
-        *(ptr as *mut T)
+        // Copy the data into a local variable, deallocate the heap space, and return the result.
+        let result = *(ptr as *mut T);
+        alloc::dealloc(ptr, layout);
+        result
     }
 }
 
