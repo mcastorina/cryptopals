@@ -1,5 +1,6 @@
 mod aes;
 mod b64;
+mod csprng;
 mod freq;
 mod hex;
 mod xor;
