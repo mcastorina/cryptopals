@@ -231,6 +231,9 @@ mod tests {
                               aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
                               dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
                               YnkK";
+        // Dictionary of characters to try.
+        const DICTIONARY: &[u8] =
+            b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
         // Generate a ciphertext with an unknown suffix and fixed key.
         fn gen_cipher(input: impl Iterator<Item = u8>) -> impl Iterator<Item = u8> {
             let suffix = SUFFIX
@@ -270,9 +273,9 @@ mod tests {
             for n in 1..=aes::BLOCK_SIZE {
                 let input = iter::repeat(b'A').take(aes::BLOCK_SIZE - n);
                 // This target block contains all known bytes except one, which we will search for
-                // by trying all 256 bytes.
+                // by trying all bytes in our DICTIONARY.
                 let target = nth_block(input.clone(), block);
-                let next = (0x00..=0xff).find(|&b| {
+                let next = DICTIONARY.iter().copied().find(|&b| {
                     let found = nth_block(
                         input
                             .clone()
@@ -291,7 +294,6 @@ mod tests {
             }
         }
 
-        aes::strip_padding(&mut plain);
         assert_eq!(
             SUFFIX
                 .chars()
