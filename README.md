@@ -22,6 +22,7 @@ Spoilers ahead!
     * [Challenge 2-9: Implement PKCS#7 padding](#challenge-2-9-implement-pkcs7-padding)
     * [Challenge 2-10: Implement CBC mode](#challenge-2-10-implement-cbc-mode)
     * [Challenge 2-11: An ECB/CBC detection oracle](#challenge-2-11-an-ecbcbc-detection-oracle)
+    * [Challenge 2-12: Byte-at-a-time ECB decryption (Simple)](#challenge-2-12-byte-at-a-time-ecb-decryption-simple)
 
 
 ## Learnings
@@ -428,5 +429,107 @@ fn aes_mode_oracle() {
         let (cipher, kind) = gen_cipher(input);
         assert_eq!(oracle(&cipher), kind);
     }
+}
+```
+
+
+### Challenge 2-12: Byte-at-a-time ECB decryption (Simple)
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/12)
+
+These challenges are starting to get more involved, and I'm not quite sure
+which parts to break out into the library and which not to. We'll keep going
+like this until I need to re-use something more regularly (or maybe make a
+module for vulnerable systems).
+
+In any case, this was a fun one because *we broke real crypto*! There's a lot
+of code here, but the theory is simple: If we know 15/16 bytes of the
+plaintext, and we're encrypting in ECB mode (same plaintext in = same
+ciphertext out), then we can try all 256 bytes and compare the output
+ciphertext with the one we see.
+
+Actually, we don't even have to try all 256 bytes if we know it's going to be
+ASCII. Changing my solution from trying all bytes to the `DICTIONARY` below
+sped it up considerably. It went from encrypting 12k plaintexts to 150.
+
+```rust
+#[test]
+fn simple_ecb_decrypt() {
+    // An unknown plaintext that gets appended to our plaintext during encryption.
+    const SUFFIX: &str = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
+                          aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
+                          dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
+                          YnkK";
+    // Dictionary of characters to try.
+    const DICTIONARY: &[u8] =
+        b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
+    // Generate a ciphertext with an unknown suffix and fixed key.
+    fn gen_cipher(input: impl Iterator<Item = u8>) -> impl Iterator<Item = u8> {
+        let suffix = SUFFIX
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .b64_decode();
+        input.chain(suffix).aes_ecb_encrypt(*b"YELLOW SUBMARINE")
+    }
+
+    // Find the block size assuming ECB mode.
+    // This will be None if gen_cipher is using CBC.
+    let block_size = (1..=256)
+        .find(|&size| {
+            let cipher: Vec<u8> = gen_cipher(iter::repeat(b'A').take(size * 2)).collect();
+            let mut chunks = cipher.chunks(size);
+            chunks.next() == chunks.next()
+        })
+        .unwrap();
+    assert_eq!(block_size, aes::BLOCK_SIZE);
+
+    // Generate the ciphertext from the input and return the nth block as a u128.
+    fn nth_block(input: impl Iterator<Item = u8>, n: usize) -> u128 {
+        u128::from_be_bytes(
+            gen_cipher(input)
+                .skip(n * aes::BLOCK_SIZE)
+                .take(aes::BLOCK_SIZE)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        )
+    }
+
+    let mut plain = Vec::new();
+    // Iterate over each block.
+    'outer: for block in 0.. {
+        // Shift the input a known amount.
+        for n in 1..=aes::BLOCK_SIZE {
+            let input = iter::repeat(b'A').take(aes::BLOCK_SIZE - n);
+            // This target block contains all known bytes except one, which we will search for
+            // by trying all bytes in our DICTIONARY.
+            let target = nth_block(input.clone(), block);
+            let next = DICTIONARY.iter().copied().find(|&b| {
+                let found = nth_block(
+                    input
+                        .clone()
+                        .chain(plain.iter().copied())
+                        .chain(iter::once(b)),
+                    block,
+                );
+                found == target
+            });
+            // Save the found byte to our plaintext and continue until there's nothing left.
+            if let Some(next) = next {
+                plain.push(next);
+                continue;
+            }
+            break 'outer;
+        }
+    }
+
+    assert_eq!(
+        SUFFIX
+            .chars()
+            .filter(|&b| !b.is_ascii_whitespace())
+            .b64_decode()
+            .collect::<Vec<_>>(),
+        plain,
+    );
 }
 ```
