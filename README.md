@@ -21,6 +21,7 @@ Spoilers ahead!
 * [Set 2: Block crypto](#set-2-block-crypto)
     * [Challenge 2-9: Implement PKCS#7 padding](#challenge-2-9-implement-pkcs7-padding)
     * [Challenge 2-10: Implement CBC mode](#challenge-2-10-implement-cbc-mode)
+    * [Challenge 2-11: An ECB/CBC detection oracle](#challenge-2-11-an-ecbcbc-detection-oracle)
 
 
 ## Learnings
@@ -374,5 +375,58 @@ fn aes_cbc_decrypt() {
         .map(char::from)
         .collect();
     assert_eq!(plain, include_str!("data/set10-plain.txt"));
+}
+```
+
+
+### Challenge 2-11: An ECB/CBC detection oracle
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/11)
+
+I was sort of confused by the instructions on this one. It wasn't clear that we
+can choose any plaintext as input to the ciphertext generator or that it was a
+critical part to the oracle. Maybe I did it wrong, but if we can choose the
+plaintext, it is simple.
+
+Even if I did it wrong, I had a lot of fun implementing pseudorandom number
+generator (PRNG) features without the external and idiomatic
+[rand](https://docs.rs/rand/latest/rand/) crate. I'm simply relying on
+`/dev/urandom` for the heavy lifting and built up an iterator (shocking) /
+helper functions.
+
+```rust
+#[test]
+fn aes_mode_oracle() {
+    // Randomly generate a ciphertext given the input.
+    fn gen_cipher(input: impl Iterator<Item = u8>) -> (Vec<u8>, &'static str) {
+        let prefix = prng::stream().take(prng::range(5..=10));
+        let suffix = prng::stream().take(prng::range(5..=10));
+        let plain = prefix.chain(input).chain(suffix);
+        let key: aes::Key128 = prng::gen();
+        if prng::gen() {
+            (plain.aes_ecb_encrypt(key).collect(), "ECB")
+        } else {
+            (plain.aes_cbc_encrypt(key, prng::gen()).collect(), "CBC")
+        }
+    }
+
+    fn oracle(cipher: &[u8]) -> &'static str {
+        let mut chunks = cipher.chunks(aes::BLOCK_SIZE).skip(1);
+        // Check that the second and third chunks are the same. This oracle only works if the
+        // input to gen_cipher is a plaintext we control. ECB encrypts the same plaintext chunk
+        // into the same ciphertext chunk.
+        if chunks.next() == chunks.next() {
+            "ECB"
+        } else {
+            "CBC"
+        }
+    }
+
+    for _ in 0..100 {
+        // Choose an input that we can easily detect repeats.
+        let input = iter::repeat(b'A').take(aes::BLOCK_SIZE * 3);
+        let (cipher, kind) = gen_cipher(input);
+        assert_eq!(oracle(&cipher), kind);
+    }
 }
 ```
