@@ -400,14 +400,14 @@ helper functions.
 fn aes_mode_oracle() {
     // Randomly generate a ciphertext given the input.
     fn gen_cipher(input: impl Iterator<Item = u8>) -> (Vec<u8>, &'static str) {
-        let prefix = prng::stream().take(prng::range(5..=10));
-        let suffix = prng::stream().take(prng::range(5..=10));
+        let prefix = rng::stream().take(rng::range(5..=10));
+        let suffix = rng::stream().take(rng::range(5..=10));
         let plain = prefix.chain(input).chain(suffix);
-        let key: aes::Key128 = prng::gen();
-        if prng::gen() {
+        let key: aes::Key128 = rng::gen();
+        if rng::gen() {
             (plain.aes_ecb_encrypt(key).collect(), "ECB")
         } else {
-            (plain.aes_cbc_encrypt(key, prng::gen()).collect(), "CBC")
+            (plain.aes_cbc_encrypt(key, rng::gen()).collect(), "CBC")
         }
     }
 
