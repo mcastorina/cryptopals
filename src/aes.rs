@@ -500,6 +500,22 @@ pub trait Aes128CbcEncryptorExt: Iterator {
 
 impl<I: Iterator> Aes128CbcEncryptorExt for I {}
 
+// Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
+pub fn strip_padding(block: &mut Vec<u8>) {
+    let padding = block[block.len() - 1] as usize;
+    if !(0x1..=0xf).contains(&padding) {
+        return;
+    }
+    if block
+        .iter()
+        .rev()
+        .take(padding)
+        .all(|&e| e as usize == padding)
+    {
+        block.truncate(block.len() - padding);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -152,11 +152,11 @@ mod tests {
 
     #[test]
     fn test_ensure_range() {
-        for start in (1..=2337) {
+        for start in 1..=2337 {
             assert!((start..).contains(&ensure_range::<u32>(1337, start..)));
             assert!((..start).contains(&ensure_range::<u32>(1337, ..start)));
             assert!((..=start).contains(&ensure_range::<u32>(1337, ..=start)));
-            for end in (start + 1..=2337) {
+            for end in start + 1..=2337 {
                 assert!((start..end).contains(&ensure_range::<u32>(1337, start..end)));
                 assert!((start..=end).contains(&ensure_range::<u32>(1337, start..=end)));
             }
