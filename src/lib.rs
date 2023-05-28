@@ -3,6 +3,7 @@ mod b64;
 mod freq;
 mod hex;
 mod rng;
+mod vuln;
 mod xor;
 
 #[cfg(test)]
@@ -304,43 +305,24 @@ mod tests {
 
     #[test]
     fn ecb_cut_paste() {
-        // Setup a vulnerable system.
-        const KEY: [u8; 16] = *b"YELLOW SUBMARINE";
-        fn profile_for(email: impl AsRef<str>) -> Option<String> {
-            let email = email.as_ref();
-            (!email.contains(['&', '='])).then(|| format!("email={email}&uid=10&role=user"))
-        }
-        fn cookie_for(email: impl AsRef<str>) -> Option<String> {
-            let profile = profile_for(email)?;
-            Some(profile.bytes().aes_ecb_encrypt(KEY).b64_collect())
-        }
-        fn parse_cookie(cookie: impl AsRef<str>) -> String {
-            // This will panic if the cookie is malformed.
-            // TODO: Make a safe aes::ecb_decrypt function.
-            cookie
-                .b64_decode()
-                .aes_ecb_decrypt(KEY)
-                .map(char::from)
-                .collect()
-        }
-        assert_eq!(
-            parse_cookie(cookie_for("me@example.com").unwrap()),
-            "email=me@example.com&uid=10&role=user"
-        );
+        // Cookies are generated with the format: email={email}&uid={uid}&role={role}.
+        let vuln = vuln::ecb_cookie::new();
 
-        // 1. Isolate an "admin" block with padding.
+        // 1. Isolate an "admin" block with padding. Since "admin" will be at the start of a block,
+        //    the padding should be 11 bytes (0xb). We offset by 10 to remove the 'email=' prefix.
         let payload = "A".repeat(10) + "admin" + &"\x0b".repeat(0xb);
-        let admin_block: Vec<u8> = cookie_for(payload)
+        let admin_block: Vec<u8> = vuln
+            .cookie_for(payload)
             .unwrap()
             .b64_decode()
             .skip(aes::BLOCK_SIZE)
             .take(aes::BLOCK_SIZE)
             .collect();
 
-        // 2. Create a profile with an email of exactly 13 characters. To push "user" into its own
+        // 2. Create a profile with an email of exactly 13 characters to push "user" into its own
         //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
         let mallory = "bad@miccah.io";
-        let cookie = cookie_for(mallory).unwrap();
+        let cookie = vuln.cookie_for(mallory).unwrap();
 
         // 3. Replace the last block with our admin block.
         let cookie: String = cookie
@@ -349,9 +331,6 @@ mod tests {
             .chain(admin_block.iter().copied())
             .b64_collect();
 
-        assert_eq!(
-            parse_cookie(cookie),
-            "email=bad@miccah.io&uid=10&role=admin"
-        );
+        assert!(vuln.is_admin(cookie));
     }
 }
