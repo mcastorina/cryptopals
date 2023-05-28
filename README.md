@@ -23,6 +23,7 @@ Spoilers ahead!
     * [Challenge 2-10: Implement CBC mode](#challenge-2-10-implement-cbc-mode)
     * [Challenge 2-11: An ECB/CBC detection oracle](#challenge-2-11-an-ecbcbc-detection-oracle)
     * [Challenge 2-12: Byte-at-a-time ECB decryption (Simple)](#challenge-2-12-byte-at-a-time-ecb-decryption-simple)
+    * [Challenge 2-13: ECB cut-and-paste](#challenge-2-13-ecb-cut-and-paste)
 
 
 ## Learnings
@@ -531,5 +532,49 @@ fn simple_ecb_decrypt() {
             .collect::<Vec<_>>(),
         plain,
     );
+}
+```
+
+### Challenge 2-13: ECB cut-and-paste
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/13)
+
+I decided to create the vulnerable system in its own module to clearly show the
+attack surface area and what we have access to as the attacker. I'm not sure if
+the attacker knows the format of the cookie or not. It's possible either way,
+but the "blind" solution would require a lot more code. We would need to
+detect which block our input is in, how many bytes until we cross an AES block
+boundary, and we would have to assume the last block had the role attribute.
+
+```rust
+#[test]
+fn ecb_cut_paste() {
+    // Cookies are generated with the format: email={email}&uid={uid}&role={role}.
+    let vuln = vuln::ecb_cookie::new();
+
+    // 1. Isolate an "admin" block with padding. Since "admin" will be at the start of a block,
+    //    the padding should be 11 bytes (0xb). We offset by 10 to remove the 'email=' prefix.
+    let payload = "A".repeat(10) + "admin" + &"\x0b".repeat(0xb);
+    let admin_block: Vec<u8> = vuln
+        .cookie_for(payload)
+        .unwrap()
+        .b64_decode()
+        .skip(aes::BLOCK_SIZE)
+        .take(aes::BLOCK_SIZE)
+        .collect();
+
+    // 2. Create a profile with an email of exactly 13 characters to push "user" into its own
+    //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
+    let mallory = "bad@miccah.io";
+    let cookie = vuln.cookie_for(mallory).unwrap();
+
+    // 3. Replace the last block with our admin block.
+    let cookie: String = cookie
+        .b64_decode()
+        .take(2 * aes::BLOCK_SIZE)
+        .chain(admin_block.iter().copied())
+        .b64_collect();
+
+    assert!(vuln.is_admin(cookie));
 }
 ```
