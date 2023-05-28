@@ -190,19 +190,6 @@ mod tests {
 
     #[test]
     fn aes_mode_oracle() {
-        // Randomly generate a ciphertext given the input.
-        fn gen_cipher(input: impl Iterator<Item = u8>) -> (Vec<u8>, &'static str) {
-            let prefix = rng::stream().take(rng::range(5..=10));
-            let suffix = rng::stream().take(rng::range(5..=10));
-            let plain = prefix.chain(input).chain(suffix);
-            let key: aes::Key128 = rng::gen();
-            if rng::gen() {
-                (plain.aes_ecb_encrypt(key).collect(), "ECB")
-            } else {
-                (plain.aes_cbc_encrypt(key, rng::gen()).collect(), "CBC")
-            }
-        }
-
         fn oracle(cipher: &[u8]) -> &'static str {
             let mut chunks = cipher.chunks(aes::BLOCK_SIZE).skip(1);
             // Check that the second and third chunks are the same. This oracle only works if the
@@ -218,45 +205,32 @@ mod tests {
         for _ in 0..100 {
             // Choose an input that we can easily detect repeats.
             let input = iter::repeat(b'A').take(aes::BLOCK_SIZE * 3);
-            let (cipher, kind) = gen_cipher(input);
-            assert_eq!(oracle(&cipher), kind);
+            let vuln = vuln::aes_mode::new(input);
+            let guess = oracle(&vuln.cipher);
+            assert!(vuln.is(guess));
         }
     }
 
     #[test]
     fn simple_ecb_decrypt() {
-        // An unknown plaintext that gets appended to our plaintext during encryption.
-        const SUFFIX: &str = "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
-                              aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
-                              dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
-                              YnkK";
-        // Dictionary of characters to try.
-        const DICTIONARY: &[u8] =
-            b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
-        // Generate a ciphertext with an unknown suffix and fixed key.
-        fn gen_cipher(input: impl Iterator<Item = u8>) -> impl Iterator<Item = u8> {
-            let suffix = SUFFIX
-                .chars()
-                .filter(|c| !c.is_ascii_whitespace())
-                .b64_decode();
-            input.chain(suffix).aes_ecb_encrypt(*b"YELLOW SUBMARINE")
-        }
+        // A vulnerable system that always appends the same (unknown) suffix to before encryption.
+        let vuln = vuln::ecb_suffix::new();
 
         // Find the block size assuming ECB mode.
-        // This will be None if gen_cipher is using CBC.
+        // This will be None if vuln is using CBC.
         let block_size = (1..=256)
             .find(|&size| {
-                let cipher: Vec<u8> = gen_cipher(iter::repeat(b'A').take(size * 2)).collect();
+                let cipher: Vec<u8> = vuln.gen_cipher(iter::repeat(b'A').take(size * 2)).collect();
                 let mut chunks = cipher.chunks(size);
                 chunks.next() == chunks.next()
             })
             .unwrap();
         assert_eq!(block_size, aes::BLOCK_SIZE);
 
-        // Generate the ciphertext from the input and return the nth block as a u128.
-        fn nth_block(input: impl Iterator<Item = u8>, n: usize) -> u128 {
+        // Helper function to return the nth block as a u128.
+        fn nth_block(cipher: impl Iterator<Item = u8>, n: usize) -> u128 {
             u128::from_be_bytes(
-                gen_cipher(input)
+                cipher
                     .skip(n * aes::BLOCK_SIZE)
                     .take(aes::BLOCK_SIZE)
                     .collect::<Vec<_>>()
@@ -264,6 +238,10 @@ mod tests {
                     .unwrap(),
             )
         }
+
+        // Dictionary of characters to try.
+        const DICTIONARY: &[u8] =
+            b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
 
         let mut plain = Vec::new();
         // Iterate over each block.
@@ -273,15 +251,13 @@ mod tests {
                 let input = iter::repeat(b'A').take(aes::BLOCK_SIZE - n);
                 // This target block contains all known bytes except one, which we will search for
                 // by trying all bytes in our DICTIONARY.
-                let target = nth_block(input.clone(), block);
+                let target = nth_block(vuln.gen_cipher(input.clone()), block);
                 let next = DICTIONARY.iter().copied().find(|&b| {
-                    let found = nth_block(
-                        input
-                            .clone()
-                            .chain(plain.iter().copied())
-                            .chain(iter::once(b)),
-                        block,
-                    );
+                    let input = input
+                        .clone()
+                        .chain(plain.iter().copied())
+                        .chain(iter::once(b));
+                    let found = nth_block(vuln.gen_cipher(input), block);
                     found == target
                 });
                 // Save the found byte to our plaintext and continue until there's nothing left.
@@ -294,12 +270,8 @@ mod tests {
         }
 
         assert_eq!(
-            SUFFIX
-                .chars()
-                .filter(|&b| !b.is_ascii_whitespace())
-                .b64_decode()
-                .collect::<Vec<_>>(),
-            plain,
+            plain.iter().b64_collect::<String>(),
+            vuln::ecb_suffix::SUFFIX,
         );
     }
 
