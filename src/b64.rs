@@ -199,6 +199,23 @@ pub trait B64DecoderExt: Iterator {
 
 impl<I: Iterator> B64DecoderExt for I {}
 
+// Trait extension to add b64_decode method to anything that can be &str.
+pub trait B64DecoderStrExt<I> {
+    fn b64_decode(&self) -> B64Decoder<std::str::Chars<'_>>
+    where
+        I: Iterator<Item = char>;
+}
+
+impl<S: AsRef<str>> B64DecoderStrExt<std::str::Chars<'_>> for S {
+    fn b64_decode(&self) -> B64Decoder<std::str::Chars<'_>> {
+        B64Decoder {
+            upstream: self.as_ref().chars(),
+            buffer: [None, None, None, None],
+            idx: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

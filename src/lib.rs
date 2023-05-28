@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn break_repeating_xor() {
-        let cipher: Vec<u8> = include_str!("data/set6.txt").chars().b64_decode().collect();
+        let cipher: Vec<u8> = include_str!("data/set6.txt").b64_decode().collect();
 
         // Find and rank key sizes.
         let mut key_sizes: Vec<_> = (2..=40)
@@ -143,7 +143,6 @@ mod tests {
     #[test]
     fn aes_ecb_decrypt() {
         let plain: String = include_str!("data/set7.txt")
-            .chars()
             .b64_decode()
             .aes_ecb_decrypt(*b"YELLOW SUBMARINE")
             .map(char::from)
@@ -181,7 +180,6 @@ mod tests {
     #[test]
     fn aes_cbc_decrypt() {
         let plain: String = include_str!("data/set10.txt")
-            .chars()
             .b64_decode()
             .aes_cbc_decrypt(*b"YELLOW SUBMARINE", Default::default())
             .map(char::from)
@@ -301,6 +299,59 @@ mod tests {
                 .b64_decode()
                 .collect::<Vec<_>>(),
             plain,
+        );
+    }
+
+    #[test]
+    fn ecb_cut_paste() {
+        // Setup a vulnerable system.
+        const KEY: [u8; 16] = *b"YELLOW SUBMARINE";
+        fn profile_for(email: impl AsRef<str>) -> Option<String> {
+            let email = email.as_ref();
+            (!email.contains(['&', '='])).then(|| format!("email={email}&uid=10&role=user"))
+        }
+        fn cookie_for(email: impl AsRef<str>) -> Option<String> {
+            let profile = profile_for(email)?;
+            Some(profile.bytes().aes_ecb_encrypt(KEY).b64_collect())
+        }
+        fn parse_cookie(cookie: impl AsRef<str>) -> String {
+            // This will panic if the cookie is malformed.
+            // TODO: Make a safe aes::ecb_decrypt function.
+            cookie
+                .b64_decode()
+                .aes_ecb_decrypt(KEY)
+                .map(char::from)
+                .collect()
+        }
+        assert_eq!(
+            parse_cookie(cookie_for("me@example.com").unwrap()),
+            "email=me@example.com&uid=10&role=user"
+        );
+
+        // 1. Isolate an "admin" block with padding.
+        let payload = "A".repeat(10) + "admin" + &"\x0b".repeat(0xb);
+        let admin_block: Vec<u8> = cookie_for(payload)
+            .unwrap()
+            .b64_decode()
+            .skip(aes::BLOCK_SIZE)
+            .take(aes::BLOCK_SIZE)
+            .collect();
+
+        // 2. Create a profile with an email of exactly 13 characters. To push "user" into its own
+        //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
+        let mallory = "bad@miccah.io";
+        let cookie = cookie_for(mallory).unwrap();
+
+        // 3. Replace the last block with our admin block.
+        let cookie: String = cookie
+            .b64_decode()
+            .take(2 * aes::BLOCK_SIZE)
+            .chain(admin_block.iter().copied())
+            .b64_collect();
+
+        assert_eq!(
+            parse_cookie(cookie),
+            "email=bad@miccah.io&uid=10&role=admin"
         );
     }
 }
