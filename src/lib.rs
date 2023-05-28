@@ -323,6 +323,7 @@ mod tests {
         //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
         let mallory = "bad@miccah.io";
         let cookie = vuln.cookie_for(mallory).unwrap();
+        assert!(!vuln.is_admin(&cookie));
 
         // 3. Replace the last block with our admin block.
         let cookie: String = cookie
