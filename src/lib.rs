@@ -306,4 +306,79 @@ mod tests {
 
         assert!(vuln.is_admin(cookie));
     }
+
+    #[test]
+    fn harder_ecb_decrypt() {
+        use vuln::ecb_prefix::VulnEcbPrefix;
+        // Generates ciphertexts with a random (fixed) prefix and suffix. The goal is to decrypt
+        // the suffix.
+        let vuln = vuln::ecb_prefix::new();
+
+        // 1. Find the AES block boundary by looking for the when the first block stops changing.
+        let prefix_size = (1..aes::BLOCK_SIZE)
+            .map(|size| {
+                let input = iter::repeat(b'A').take(size);
+                (size, vuln.gen_cipher(input).aes_nth_block(0).unwrap())
+            })
+            .reduce(|last, cur| if last.1 == cur.1 { last } else { cur })
+            .map(|(size, _)| size)
+            .unwrap();
+
+        // 2. Generate 16 ciphertexts so every byte will be on a chunk border.
+        let ciphers: Vec<Vec<u8>> = (0..aes::BLOCK_SIZE)
+            .map(|ofs| {
+                let input = iter::repeat(b'A').take(prefix_size + ofs);
+                // Ignore the first chunk because it's garbage.
+                vuln.gen_cipher(input).skip(aes::BLOCK_SIZE).collect()
+            })
+            .collect();
+
+        // 3. Setup an oracle that, given 15 bytes of known plaintext, will search for an entry in
+        //    DICTIONARY that will encrypt to the target cipher text.
+        let oracle = |known_plain: [u8; 15], target_cipher: [u8; 16]| {
+            const DICTIONARY: &[u8] =
+                b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
+            let input = iter::repeat(b'A')
+                .take(prefix_size)
+                .chain(known_plain.into_iter());
+            DICTIONARY.iter().copied().find(|&b| {
+                let found: [u8; aes::BLOCK_SIZE] = vuln
+                    .gen_cipher(input.clone().chain(iter::once(b)))
+                    .skip(aes::BLOCK_SIZE)
+                    .take(aes::BLOCK_SIZE)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+                found == target_cipher
+            })
+        };
+
+        // 4. Build out the plaintext byte-by-byte.
+        let mut plain: Vec<u8> = Vec::new();
+        for i in 0.. {
+            // Calculate the current offset (how much padding we have) and block that we're
+            // operating on.
+            let ofs = 15 - (i % aes::BLOCK_SIZE);
+            let block = i / aes::BLOCK_SIZE;
+            // Build the known by taking the last 15 bytes of the known plaintext (padded with As).
+            let known = {
+                let mut known = [b'A'; 15];
+                for (i, &b) in plain.iter().rev().take(15).enumerate() {
+                    known[14 - i] = b;
+                }
+                known
+            };
+            let target = ciphers[ofs].iter().aes_nth_block(block).unwrap();
+            if let Some(found) = oracle(known, target) {
+                plain.push(found);
+            } else {
+                break;
+            }
+        }
+
+        assert_eq!(
+            plain.iter().b64_collect::<String>(),
+            vuln::ecb_prefix::SUFFIX,
+        );
+    }
 }

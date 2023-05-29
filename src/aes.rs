@@ -500,6 +500,24 @@ pub trait Aes128CbcEncryptorExt: Iterator {
 
 impl<I: Iterator> Aes128CbcEncryptorExt for I {}
 
+// Trait extension to add aes_nth_block method to any iterator.
+pub trait AesNthBlockExt: Iterator {
+    fn aes_nth_block(self, n: usize) -> Option<[u8; BLOCK_SIZE]>
+    where
+        Self: Sized,
+        Self::Item: Borrow<u8>,
+    {
+        let mut output: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
+        let mut iter = self.skip(n * BLOCK_SIZE).take(BLOCK_SIZE);
+        for i in 0..BLOCK_SIZE {
+            output[i] = *iter.next()?.borrow();
+        }
+        Some(output)
+    }
+}
+
+impl<I: Iterator> AesNthBlockExt for I {}
+
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 pub fn strip_padding(block: &mut Vec<u8>) {
     let padding = block[block.len() - 1] as usize;

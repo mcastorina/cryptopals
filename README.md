@@ -24,6 +24,7 @@ Spoilers ahead!
     * [Challenge 2-11: An ECB/CBC detection oracle](#challenge-2-11-an-ecbcbc-detection-oracle)
     * [Challenge 2-12: Byte-at-a-time ECB decryption (Simple)](#challenge-2-12-byte-at-a-time-ecb-decryption-simple)
     * [Challenge 2-13: ECB cut-and-paste](#challenge-2-13-ecb-cut-and-paste)
+    * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-12-byte-at-a-time-ecb-decryption-harder)
 
 
 ## Learnings
@@ -560,5 +561,101 @@ fn ecb_cut_paste() {
         .b64_collect();
 
     assert!(vuln.is_admin(cookie));
+}
+```
+
+### Challenge 2-14: Byte-at-a-time ECB decryption (Harder)
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/14)
+
+I am quite happy with this solution because I felt like I improved on my
+solution from [the simpler version](#challenge-2-12-byte-at-a-time-ecb-decryption-simple).
+I'm no longer using `u128` because `[u8; 16]` can be directly compared, my
+`oracle` function feels a lot more intuitive, and the loop to build the
+plaintext is also simpler.
+
+I also added another iterator (what??) to get the `aes_nth_block` of a
+byte-stream. I think that helped simplify a lot of the code so there isn't a
+ton of `cipher.skip(n * aes::BLOCK_SIZE).take(aes::BLOCK_SIZE).collect::<Vec<_>>().try_into().unwrap()`s
+everywhere.
+
+I *do* wish there were some sort of iterator adaptor to easily find when a
+stream value changes, but that's highly specific and `windows(2)` would
+probably work well if I were using external crates.
+
+```rust
+#[test]
+fn harder_ecb_decrypt() {
+    use vuln::ecb_prefix::VulnEcbPrefix;
+    // Generates ciphertexts with a random (fixed) prefix and suffix. The goal is to decrypt
+    // the suffix.
+    let vuln = vuln::ecb_prefix::new();
+
+    // 1. Find the AES block boundary by looking for the when the first block stops changing.
+    let prefix_size = (1..aes::BLOCK_SIZE)
+        .map(|size| {
+            let input = iter::repeat(b'A').take(size);
+            (size, vuln.gen_cipher(input).aes_nth_block(0).unwrap())
+        })
+        .reduce(|last, cur| if last.1 == cur.1 { last } else { cur })
+        .map(|(size, _)| size)
+        .unwrap();
+
+    // 2. Generate 16 ciphertexts so every byte will be on a chunk border.
+    let ciphers: Vec<Vec<u8>> = (0..aes::BLOCK_SIZE)
+        .map(|ofs| {
+            let input = iter::repeat(b'A').take(prefix_size + ofs);
+            // Ignore the first chunk because it's garbage.
+            vuln.gen_cipher(input).skip(aes::BLOCK_SIZE).collect()
+        })
+        .collect();
+
+    // 3. Setup an oracle that, given 15 bytes of known plaintext, will search for an entry in
+    //    DICTIONARY that will encrypt to the target cipher text.
+    let oracle = |known_plain: [u8; 15], target_cipher: [u8; 16]| {
+        const DICTIONARY: &[u8] =
+            b" \r\netaoinshrdlucwmfygpbvkxjqzETAOINSHRDLUCWMFYGPBVKXJQZ0123456789.,?'\"-;:~!@#$^&*%()[]{}_/\\";
+        let input = iter::repeat(b'A')
+            .take(prefix_size)
+            .chain(known_plain.into_iter());
+        DICTIONARY.iter().copied().find(|&b| {
+            let found: [u8; aes::BLOCK_SIZE] = vuln
+                .gen_cipher(input.clone().chain(iter::once(b)))
+                .skip(aes::BLOCK_SIZE)
+                .take(aes::BLOCK_SIZE)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+            found == target_cipher
+        })
+    };
+
+    // 4. Build out the plaintext byte-by-byte.
+    let mut plain: Vec<u8> = Vec::new();
+    for i in 0.. {
+        // Calculate the current offset (how much padding we have) and block that we're
+        // operating on.
+        let ofs = 15 - (i % aes::BLOCK_SIZE);
+        let block = i / aes::BLOCK_SIZE;
+        // Build the known by taking the last 15 bytes of the known plaintext (padded with As).
+        let known = {
+            let mut known = [b'A'; 15];
+            for (i, &b) in plain.iter().rev().take(15).enumerate() {
+                known[14 - i] = b;
+            }
+            known
+        };
+        let target = ciphers[ofs].iter().aes_nth_block(block).unwrap();
+        if let Some(found) = oracle(known, target) {
+            plain.push(found);
+        } else {
+            break;
+        }
+    }
+
+    assert_eq!(
+        plain.iter().b64_collect::<String>(),
+        vuln::ecb_prefix::SUFFIX,
+    );
 }
 ```
