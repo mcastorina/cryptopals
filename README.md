@@ -24,7 +24,7 @@ Spoilers ahead!
     * [Challenge 2-11: An ECB/CBC detection oracle](#challenge-2-11-an-ecbcbc-detection-oracle)
     * [Challenge 2-12: Byte-at-a-time ECB decryption (Simple)](#challenge-2-12-byte-at-a-time-ecb-decryption-simple)
     * [Challenge 2-13: ECB cut-and-paste](#challenge-2-13-ecb-cut-and-paste)
-    * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-12-byte-at-a-time-ecb-decryption-harder)
+    * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-14-byte-at-a-time-ecb-decryption-harder)
 
 
 ## Learnings
@@ -563,6 +563,7 @@ fn ecb_cut_paste() {
     assert!(vuln.is_admin(cookie));
 }
 ```
+
 
 ### Challenge 2-14: Byte-at-a-time ECB decryption (Harder)
 
