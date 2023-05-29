@@ -539,13 +539,12 @@ fn ecb_cut_paste() {
     // 1. Isolate an "admin" block with padding. Since "admin" will be at the start of a block,
     //    the padding should be 11 bytes (0xb). We offset by 10 to remove the 'email=' prefix.
     let payload = "A".repeat(10) + "admin" + &"\x0b".repeat(0xb);
-    let admin_block: Vec<u8> = vuln
+    let admin_block = vuln
         .cookie_for(payload)
         .unwrap()
         .b64_decode()
-        .skip(aes::BLOCK_SIZE)
-        .take(aes::BLOCK_SIZE)
-        .collect();
+        .aes_nth_block(1)
+        .unwrap();
 
     // 2. Create a profile with an email of exactly 13 characters to push "user" into its own
     //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
@@ -557,7 +556,7 @@ fn ecb_cut_paste() {
     let cookie: String = cookie
         .b64_decode()
         .take(2 * aes::BLOCK_SIZE)
-        .chain(admin_block.iter().copied())
+        .chain(admin_block.into_iter())
         .b64_collect();
 
     assert!(vuln.is_admin(cookie));
@@ -586,7 +585,6 @@ probably work well if I were using external crates.
 ```rust
 #[test]
 fn harder_ecb_decrypt() {
-    use vuln::ecb_prefix::VulnEcbPrefix;
     // Generates ciphertexts with a random (fixed) prefix and suffix. The goal is to decrypt
     // the suffix.
     let vuln = vuln::ecb_prefix::new();
@@ -621,10 +619,7 @@ fn harder_ecb_decrypt() {
         DICTIONARY.iter().copied().find(|&b| {
             let found: [u8; aes::BLOCK_SIZE] = vuln
                 .gen_cipher(input.clone().chain(iter::once(b)))
-                .skip(aes::BLOCK_SIZE)
-                .take(aes::BLOCK_SIZE)
-                .collect::<Vec<_>>()
-                .try_into()
+                .aes_nth_block(1)
                 .unwrap();
             found == target_cipher
         })
