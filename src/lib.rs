@@ -313,7 +313,7 @@ mod tests {
         let vuln = vuln::ecb_prefix::new();
 
         // 1. Find the AES block boundary by looking for the when the first block stops changing.
-        let prefix_size = (1..aes::BLOCK_SIZE)
+        let prefix_size = (1..=aes::BLOCK_SIZE)
             .map(|size| {
                 let input = iter::repeat(b'A').take(size);
                 (size, vuln.gen_cipher(input).aes_nth_block(0).unwrap())
