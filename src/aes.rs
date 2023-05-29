@@ -519,19 +519,20 @@ pub trait AesNthBlockExt: Iterator {
 impl<I: Iterator> AesNthBlockExt for I {}
 
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
-pub fn strip_padding(block: &mut Vec<u8>) {
+pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
     let padding = block[block.len() - 1] as usize;
     if !(0x1..=0xf).contains(&padding) {
-        return;
+        return None;
     }
-    if block
+    let valid_padding = block
         .iter()
         .rev()
         .take(padding)
-        .all(|&e| e as usize == padding)
-    {
+        .all(|&e| e as usize == padding);
+    if valid_padding {
         block.truncate(block.len() - padding);
     }
+    valid_padding.then_some(padding)
 }
 
 #[cfg(test)]
