@@ -125,7 +125,8 @@ impl From<[u8; KEY_SIZE]> for Key128 {
     }
 }
 
-// Multiplication performed in GF(2^8) for polynomial x^8 + x^4 + x^3 + x + 1.
+// Polynomial multiplication performed in GF(2^8) with modulus x^8 + x^4 + x^3 + x + 1.
+// The bits in a and b represent the coefficients of the polynomial.
 fn gmul(mut a: u8, mut b: u8) -> u8 {
     let mut prod = 0;
 
@@ -145,8 +146,8 @@ fn gmul(mut a: u8, mut b: u8) -> u8 {
     prod
 }
 
-// Optimized gmul by 2.
-fn gmul2(a: u8) -> u8 {
+// Optimized gmul by x.
+fn gmul_x(a: u8) -> u8 {
     let high_bit = (a & 0x80) != 0;
     let mut b = a << 1;
     if high_bit {
@@ -155,9 +156,9 @@ fn gmul2(a: u8) -> u8 {
     b
 }
 
-// Optimized gmul by 3.
-fn gmul3(a: u8) -> u8 {
-    a ^ gmul2(a)
+// Optimized gmul by x + 1.
+fn gmul_x_plus_1(a: u8) -> u8 {
+    a ^ gmul_x(a)
 }
 
 // Helper function to substitute each of the 4 bytes in a word.
@@ -210,10 +211,10 @@ fn inv_shift_columns(matrix: [u8; BLOCK_SIZE]) -> [u8; BLOCK_SIZE] {
 fn mix_row(row: [u8; 4]) -> [u8; 4] {
     let [b0, b1, b2, b3] = row;
     [
-        gmul2(b0) ^ gmul3(b1) ^ b2 ^ b3,
-        b0 ^ gmul2(b1) ^ gmul3(b2) ^ b3,
-        b0 ^ b1 ^ gmul2(b2) ^ gmul3(b3),
-        gmul3(b0) ^ b1 ^ b2 ^ gmul2(b3),
+        gmul_x(b0) ^ gmul_x_plus_1(b1) ^ b2 ^ b3,
+        b0 ^ gmul_x(b1) ^ gmul_x_plus_1(b2) ^ b3,
+        b0 ^ b1 ^ gmul_x(b2) ^ gmul_x_plus_1(b3),
+        gmul_x_plus_1(b0) ^ b1 ^ b2 ^ gmul_x(b3),
     ]
 }
 
@@ -552,8 +553,8 @@ mod tests {
     #[test]
     fn test_gmul() {
         assert_eq!(gmul(193, 56), 165);
-        assert_eq!(gmul2(15), gmul(15, 2));
-        assert_eq!(gmul3(34), gmul(34, 3));
+        assert_eq!(gmul_x(15), gmul(15, 2));
+        assert_eq!(gmul_x_plus_1(34), gmul(34, 3));
     }
 
     #[test]
