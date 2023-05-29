@@ -336,7 +336,7 @@ where
         }
         // Check current decrypted_buffer for padding.
         let padding = self.decrypted_buffer[self.decrypted_buffer.len() - 1] as usize;
-        if !(0x1..=0xf).contains(&padding) {
+        if !(0x1..=0x10).contains(&padding) {
             return None;
         }
         self.decrypted_buffer
@@ -412,6 +412,7 @@ pub struct Aes128Encryptor<I: Iterator> {
     round_keys: [RoundKey; 11],
     buffer_index: usize,
     encrypted_buffer: [u8; BLOCK_SIZE],
+    padded: bool,
     chain: Option<[u8; BLOCK_SIZE]>,
 }
 
@@ -430,6 +431,13 @@ where
                 // We ran out of plaintext, so pad the rest.
                 let size = BLOCK_SIZE - i;
                 plain[i..].clone_from_slice(&[size as u8; 16][..size]);
+                self.padded = true;
+                break;
+            } else if !self.padded {
+                // We should always output padding, so if the plaintext is exactly a multiple of
+                // BLOCK_SIZE, add a full block of padding.
+                plain = [BLOCK_SIZE as u8; BLOCK_SIZE];
+                self.padded = true;
                 break;
             } else {
                 // We don't have any more plaintext to encrypt.
@@ -475,6 +483,7 @@ pub trait Aes128EcbEncryptorExt: Iterator {
             round_keys: key.into().round_keys(),
             buffer_index: 0,
             encrypted_buffer: [0; BLOCK_SIZE],
+            padded: false,
             chain: None,
         }
     }
@@ -493,6 +502,7 @@ pub trait Aes128CbcEncryptorExt: Iterator {
             round_keys: key.into().round_keys(),
             buffer_index: 0,
             encrypted_buffer: [0; BLOCK_SIZE],
+            padded: false,
             chain: Some(iv),
         }
     }
@@ -521,7 +531,7 @@ impl<I: Iterator> AesNthBlockExt for I {}
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
     let padding = block[block.len() - 1] as usize;
-    if !(0x1..=0xf).contains(&padding) {
+    if !(0x1..=0x10).contains(&padding) {
         return None;
     }
     let valid_padding = block
@@ -681,6 +691,21 @@ mod tests {
     }
 
     #[test]
+    fn test_encrypt_decrypt_ecb_block_size() {
+        let key = *b"YELLOW SUBMARINE";
+        let plain = "A".repeat(16);
+        assert_eq!(
+            plain
+                .bytes()
+                .aes_ecb_encrypt(key)
+                .aes_ecb_decrypt(key)
+                .map(char::from)
+                .collect::<String>(),
+            plain,
+        );
+    }
+
+    #[test]
     fn test_encrypt_decrypt_cbc() {
         let key = *b"yellow submarine";
         let iv = *b"foo bar baz buzz";
@@ -707,7 +732,12 @@ mod tests {
                 0xf5, 0x45, 0xc0, 0x06,
                 0x06, 0x91, 0x26, 0xd9,
                 0xc0, 0xf9, 0x3f, 0xa7,
-                0xdd, 0x89, 0xab, 0x98
+                0xdd, 0x89, 0xab, 0x98,
+                // Padding
+                0x60, 0xfa, 0x36, 0x70,
+                0x7e, 0x45, 0xf4, 0x99,
+                0xdb, 0xa0, 0xf2, 0x5b,
+                0x92, 0x23, 0x01, 0xa5,
             ],
         );
     }
@@ -725,6 +755,11 @@ mod tests {
                 0x06, 0x91, 0x26, 0xd9,
                 0xc0, 0xf9, 0x3f, 0xa7,
                 0xdd, 0x89, 0xab, 0x98,
+                // Padding
+                0x8d, 0xe3, 0x10, 0x76,
+                0x7d, 0xe1, 0xc5, 0x3d,
+                0x4c, 0x0b, 0x12, 0xb6,
+                0x03, 0x3c, 0x5c, 0xb8,
             ],
         );
     }

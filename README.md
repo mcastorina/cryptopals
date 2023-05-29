@@ -25,6 +25,7 @@ Spoilers ahead!
     * [Challenge 2-12: Byte-at-a-time ECB decryption (Simple)](#challenge-2-12-byte-at-a-time-ecb-decryption-simple)
     * [Challenge 2-13: ECB cut-and-paste](#challenge-2-13-ecb-cut-and-paste)
     * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-14-byte-at-a-time-ecb-decryption-harder)
+    * [Challenge 2-15: PKCS#7 padding validation](#challenge-2-15-pkcs7-padding-validation)
 
 
 ## Learnings
@@ -654,5 +655,39 @@ fn harder_ecb_decrypt() {
         plain.iter().b64_collect::<String>(),
         vuln::ecb_prefix::SUFFIX,
     );
+}
+```
+
+
+### Challenge 2-15: PKCS#7 padding validation
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/15)
+
+I thought this is covered by my [earlier implementation](#challenge-2-9-implement-pkcs7-padding),
+but comparing with `openssl`, it looks like AES always pads (including an
+entire block of padding if needed). So I updated my encryption and decryption
+to always pad, though decryption won't panic if there isn't padding. Maybe this
+calls for a `try_aes_decrypt` style iterator extension that consumes the
+iterator and returns a `Result`.
+
+Either way, I just had to change `strip_padding` to include `0x10` instead of
+stopping at `0xf` (included below for completeness).
+
+```rust
+// Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
+pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
+    let padding = block[block.len() - 1] as usize;
+    if !(0x1..=0x10).contains(&padding) {
+        return None;
+    }
+    let valid_padding = block
+        .iter()
+        .rev()
+        .take(padding)
+        .all(|&e| e as usize == padding);
+    if valid_padding {
+        block.truncate(block.len() - padding);
+    }
+    valid_padding.then_some(padding)
 }
 ```
