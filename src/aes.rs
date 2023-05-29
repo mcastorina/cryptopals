@@ -529,6 +529,35 @@ pub trait AesNthBlockExt: Iterator {
 
 impl<I: Iterator> AesNthBlockExt for I {}
 
+// Trait extension to add try_aes_cbc_decrypt method to any iterator.
+pub trait TryAesCbcDecryptExt: Iterator {
+    fn try_aes_cbc_decrypt<B>(
+        self,
+        key: impl Into<Key128>,
+        iv: [u8; BLOCK_SIZE],
+    ) -> Result<B, &'static str>
+    where
+        Self: Sized,
+        Self::Item: Borrow<u8>,
+        B: std::iter::FromIterator<u8>,
+    {
+        let mut iter = self.aes_cbc_decrypt(key, iv);
+        let mut buffer = Vec::new();
+
+        while iter.upstream.peek().is_some() {
+            iter.refill_buffer().ok_or("unexpected EOF")?;
+            // Check if we should expect any padding.
+            if iter.upstream.peek().is_none() && iter.buffer_length == BLOCK_SIZE {
+                return Err("malformed padding");
+            }
+            buffer.extend_from_slice(&iter.decrypted_buffer[..iter.buffer_length]);
+        }
+        Ok(buffer.into_iter().collect())
+    }
+}
+
+impl<I: Iterator> TryAesCbcDecryptExt for I {}
+
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
     let padding = block[block.len() - 1] as usize;
