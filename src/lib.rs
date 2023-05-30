@@ -294,7 +294,7 @@ mod tests {
         //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
         let mallory = "bad@miccah.io";
         let cookie = vuln.cookie_for(mallory).unwrap();
-        assert!(!vuln.is_admin(&cookie));
+        assert_eq!(vuln.is_admin(&cookie), false);
 
         // 3. Replace the last block with our admin block.
         let cookie: String = cookie
@@ -303,7 +303,7 @@ mod tests {
             .chain(admin_block.into_iter())
             .b64_collect();
 
-        assert!(vuln.is_admin(cookie));
+        assert_eq!(vuln.is_admin(cookie), true);
     }
 
     #[test]
@@ -375,5 +375,24 @@ mod tests {
             plain.iter().b64_collect::<String>(),
             vuln::ecb_prefix::SUFFIX,
         );
+    }
+
+    #[test]
+    fn cbc_bit_flip() {
+        // Our user input gets prepended with 32 bytes and appended with 42 bytes before encryption.
+        let vuln = vuln::cbc_bits::new();
+
+        // Choose a plaintext that we can easily flip bits with. The only prevented characters are
+        // ';' and '=', so we use ':' and '<' as they are both one bit off. We need to prefix the
+        // string with a semicolon because the previous block will be entirely scrambled.
+        let cookie = vuln.cookie_for(":admin<true").unwrap();
+        assert_eq!(vuln.is_admin(&cookie).unwrap(), false);
+
+        let mut cipher: Vec<u8> = cookie.b64_decode().collect();
+        cipher[16] ^= 0x1; // Transform : into ;
+        cipher[22] ^= 0x1; // Transform < into =
+
+        let cookie: String = cipher.iter().b64_collect();
+        assert_eq!(vuln.is_admin(cookie).unwrap(), true);
     }
 }

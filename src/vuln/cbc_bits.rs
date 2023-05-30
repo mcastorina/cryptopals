@@ -23,7 +23,7 @@ impl VulnCbcBits {
             .b64_decode()
             .try_aes_cbc_decrypt(self.key, self.iv)
             .ok()?;
-        Some(decrypted.into_iter().map(char::from).collect())
+        String::from_utf8(decrypted).ok()
     }
 
     // Generate a cookie with the provided user data.

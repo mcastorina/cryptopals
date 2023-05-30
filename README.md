@@ -26,6 +26,7 @@ Spoilers ahead!
     * [Challenge 2-13: ECB cut-and-paste](#challenge-2-13-ecb-cut-and-paste)
     * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-14-byte-at-a-time-ecb-decryption-harder)
     * [Challenge 2-15: PKCS#7 padding validation](#challenge-2-15-pkcs7-padding-validation)
+    * [Challenge 2-16: CBC bitflipping attacks](#challenge-2-16-cbc-bitflipping-attacks)
 
 
 ## Learnings
@@ -552,7 +553,7 @@ fn ecb_cut_paste() {
     //    AES block. Alternatively, a length of 13 + 16N for any integer N would work.
     let mallory = "bad@miccah.io";
     let cookie = vuln.cookie_for(mallory).unwrap();
-    assert!(!vuln.is_admin(cookie));
+    assert_eq!(vuln.is_admin(&cookie), false);
 
     // 3. Replace the last block with our admin block.
     let cookie: String = cookie
@@ -561,7 +562,7 @@ fn ecb_cut_paste() {
         .chain(admin_block.into_iter())
         .b64_collect();
 
-    assert!(vuln.is_admin(cookie));
+    assert_eq!(vuln.is_admin(cookie), true);
 }
 ```
 
@@ -689,5 +690,37 @@ pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
         block.truncate(block.len() - padding);
     }
     valid_padding.then_some(padding)
+}
+```
+
+
+### Challenge 2-16: CBC bitflipping attacks
+
+[Challenge link](https://cryptopals.com/sets/2/challenges/16)
+
+This one was a lot easier than I anticipated, but the critical information is
+given at the end of the challenge. You can flip bits in a block, which cause
+the entire block to get scrambled and the following block to have a bit
+flipped. Since we know the format of the plaintext, we know where the block
+boundaries are and can easily choose the correct byte to target.
+
+```rust
+#[test]
+fn cbc_bit_flip() {
+    // Our user input gets prepended with 32 bytes and appended with 42 bytes before encryption.
+    let vuln = vuln::cbc_bits::new();
+
+    // Choose a plaintext that we can easily flip bits with. The only prevented characters are
+    // ';' and '=', so we use ':' and '<' as they are both one bit off. We need to prefix the
+    // string with a semicolon because the previous block will be entirely scrambled.
+    let cookie = vuln.cookie_for(":admin<true").unwrap();
+    assert_eq!(vuln.is_admin(&cookie).unwrap(), false);
+
+    let mut cipher: Vec<u8> = cookie.b64_decode().collect();
+    cipher[16] ^= 0x1; // Transform : into ;
+    cipher[22] ^= 0x1; // Transform < into =
+
+    let cookie: String = cipher.iter().b64_collect();
+    assert_eq!(vuln.is_admin(cookie).unwrap(), true);
 }
 ```
