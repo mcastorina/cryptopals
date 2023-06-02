@@ -27,6 +27,8 @@ Spoilers ahead!
     * [Challenge 2-14: Byte-at-a-time ECB decryption (Harder)](#challenge-2-14-byte-at-a-time-ecb-decryption-harder)
     * [Challenge 2-15: PKCS#7 padding validation](#challenge-2-15-pkcs7-padding-validation)
     * [Challenge 2-16: CBC bitflipping attacks](#challenge-2-16-cbc-bitflipping-attacks)
+* [Set 3: Block & stream crypto](#set-3-block--stream-crypto)
+    * [Challenge 3-17: The CBC padding oracle](#challenge-3-17-the-cbc-padding-oracle)
 
 
 ## Learnings
@@ -722,5 +724,81 @@ fn cbc_bit_flip() {
 
     let cookie: String = cipher.iter().b64_collect();
     assert_eq!(vuln.is_admin(cookie).unwrap(), true);
+}
+```
+
+## Set 3: Block & stream crypto
+
+### Challenge 3-17: The CBC padding oracle
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/17)
+
+This is very cool and pretty cryptic. I wish I could make the code more
+readable (maybe I'll come back to this and refactor), but it took a fair bit of
+debugging. It boils down to taking two blocks, `c1` and `c2`, and modifying
+`c1` so that `c2` decrypts to have valid padding. When it does, we know that
+the byte we found XORs to the decrypted padding number and can recover the
+plaintext.
+
+```rust
+#[test]
+fn cbc_padding_oracle() {
+    let vuln = vuln::cbc_padding::new();
+    let (cipher, iv) = vuln.cipher();
+
+    // Chunk up the cipher text into AES block sizes.
+    let chunks: Vec<[u8; aes::BLOCK_SIZE]> = {
+        let mut chunks = vec![iv];
+        chunks.extend(
+            cipher
+                .chunks(aes::BLOCK_SIZE)
+                .map(|chunk| chunk.try_into().unwrap())
+                .collect::<Vec<[u8; aes::BLOCK_SIZE]>>(),
+        );
+        chunks
+    };
+
+    // Isolate two blocks to work with. We'll go left to right.
+    let mut decrypted = Vec::new();
+    let mut iter = chunks.windows(2);
+    while let Some(&[c1, c2]) = iter.next() {
+        // Get the plaintext block a byte at a time.
+        let mut plain = [0_u8; aes::BLOCK_SIZE];
+        // Go through each possible padding.
+        for padding in 1..=aes::BLOCK_SIZE {
+            // Build the first ciphertext block by taking the original block and setting the
+            // trailing bytes to the expected padding value. We need the plaintext to calculate
+            // it correctly, so we must decode each block right to left.
+            let c1 = {
+                let mut block = c1;
+                for index in (0..aes::BLOCK_SIZE).rev().take(padding - 1) {
+                    block[index] = block[index] ^ plain[index] ^ (padding as u8);
+                }
+                block
+            };
+            let target_index = aes::BLOCK_SIZE - padding;
+            // Try all 256 bytes and check for valid padding. We go in reverse because the last
+            // block already has valid padding, so XOR with 0x00 (no-op) should be the last
+            // thing we try.
+            for b in (0x00..=0xff).rev() {
+                // Construct the block by XORing the target index byte. This should make the
+                // decrypted byte equal to b.
+                let c1 = {
+                    let mut block = c1;
+                    block[target_index] ^= b;
+                    block
+                };
+                // Ask our vulnerable system if we have valid padding.
+                if vuln.valid_padding(c1.iter().chain(c2.iter())) {
+                    plain[target_index] = b ^ (padding as u8);
+                    break;
+                }
+            }
+        }
+        decrypted.extend_from_slice(&plain);
+    }
+    aes::strip_padding(&mut decrypted);
+
+    assert!(vuln.solve(&decrypted));
 }
 ```

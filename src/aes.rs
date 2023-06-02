@@ -670,6 +670,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_inv_mix_rows() {
         assert_eq!(
             inv_mix_rows(mix_rows(*b"yellow submarine")),
