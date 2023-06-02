@@ -30,6 +30,7 @@ Spoilers ahead!
 * [Set 3: Block & stream crypto](#set-3-block--stream-crypto)
     * [Challenge 3-17: The CBC padding oracle](#challenge-3-17-the-cbc-padding-oracle)
     * [Challenge 3-18: Implement CTR, the stream cipher mode](#challenge-3-18-implement-ctr-the-stream-cipher-mode)
+    * [Challenge 3-19: Break fixed-nonce CTR mode using substitutions](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions)
 
 
 ## Learnings
@@ -826,5 +827,46 @@ fn aes_ctr() {
         result,
         "WW8sIFZJUCBMZXQncyBraWNrIGl0IEljZSwgSWNlLCBiYWJ5IEljZSwgSWNlLCBiYWJ5IA=="
     );
+}
+```
+
+
+### Challenge 3-19: Break fixed-nonce CTR mode using substitutions
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/19)
+
+I think I overthunk it. I used the frequency analysis XOR search from earlier
+to automatically find the best key and strung it together to decrypt each
+ciphertext a column at a time.
+
+```rust
+#[test]
+fn fixed_nonce() {
+    let vuln = vuln::fixed_ctr_nonce::new();
+    let ciphers = vuln.ciphers();
+
+    // Use our previous search function to find the best single byte XOR key of a
+    // cross-section of the cipher-texts. The most likely key will have the highest
+    // frequency analysis score as it will decode all ciphertexts to ASCII characters.
+    let key: Vec<u8> = (0..)
+        .map_while(|ofs| {
+            let cross: Vec<_> = ciphers
+                .iter()
+                .filter_map(|cipher| cipher.get(ofs))
+                .collect();
+            // Only try to decode cross-sections that we have enough data for.
+            if cross.len() < 3 * ciphers.len() / 4 {
+                return None;
+            }
+            xor::search(ciphers.iter().filter_map(|cipher| cipher.get(ofs)))
+        })
+        .map(|(_, guess)| guess)
+        .collect();
+
+    for (i, cipher) in ciphers.iter().enumerate() {
+        let plain = xor::bytewise(&key, cipher).collect::<Vec<_>>();
+        let plain = String::from_utf8_lossy(&plain);
+        assert!(vuln.check_prefix(i, &plain));
+    }
 }
 ```
