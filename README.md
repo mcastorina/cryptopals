@@ -29,6 +29,7 @@ Spoilers ahead!
     * [Challenge 2-16: CBC bitflipping attacks](#challenge-2-16-cbc-bitflipping-attacks)
 * [Set 3: Block & stream crypto](#set-3-block--stream-crypto)
     * [Challenge 3-17: The CBC padding oracle](#challenge-3-17-the-cbc-padding-oracle)
+    * [Challenge 3-18: Implement CTR, the stream cipher mode](#challenge-3-18-implement-ctr-the-stream-cipher-mode)
 
 
 ## Learnings
@@ -800,5 +801,30 @@ fn cbc_padding_oracle() {
     aes::strip_padding(&mut decrypted);
 
     assert!(vuln.solve(&decrypted));
+}
+```
+
+
+### Challenge 3-18: Implement CTR, the stream cipher mode
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/18)
+
+What's this? A *stream* cipher?? I bet I could make it an iterator. And so it
+was done, and I'm quite happy with [the implementation](https://github.com/mcastorina/cryptopals/blob/d97e2d054061da52174ba157b44c4ea9f00e9ca6/src/aes.rs#L578-L588).
+It is a function that returns an infinite iterator of bytes that can be XORed
+with the input.
+
+```rust
+#[test]
+fn aes_ctr() {
+    let input = "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==";
+    let result: String = input
+        .b64_decode()
+        .xor_bytewise(aes::ctr(*b"YELLOW SUBMARINE", 0))
+        .b64_collect();
+    assert_eq!(
+        result,
+        "WW8sIFZJUCBMZXQncyBraWNrIGl0IEljZSwgSWNlLCBiYWJ5IEljZSwgSWNlLCBiYWJ5IA=="
+    );
 }
 ```
