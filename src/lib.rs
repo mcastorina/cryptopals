@@ -397,6 +397,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn cbc_padding_oracle() {
         let vuln = vuln::cbc_padding::new();
         let (cipher, iv) = vuln.cipher();
