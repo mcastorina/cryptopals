@@ -456,4 +456,17 @@ mod tests {
 
         assert!(vuln.solve(&decrypted));
     }
+
+    #[test]
+    fn aes_ctr() {
+        let input = "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==";
+        let result: String = input
+            .b64_decode()
+            .xor_bytewise(aes::ctr(*b"YELLOW SUBMARINE", 0))
+            .b64_collect();
+        assert_eq!(
+            result,
+            "WW8sIFZJUCBMZXQncyBraWNrIGl0IEljZSwgSWNlLCBiYWJ5IEljZSwgSWNlLCBiYWJ5IA=="
+        );
+    }
 }

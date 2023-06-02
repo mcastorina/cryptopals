@@ -575,6 +575,18 @@ pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {
     valid_padding.then_some(padding)
 }
 
+// Given a key and nonce, returns an endless stream of encrypted bytes.
+pub fn ctr(key: impl Into<Key128>, nonce: u64) -> impl Iterator<Item = u8> {
+    (0_u64..)
+        .flat_map(move |ctr| {
+            nonce
+                .to_le_bytes()
+                .into_iter()
+                .chain(ctr.to_le_bytes().into_iter())
+        })
+        .aes_ecb_encrypt(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

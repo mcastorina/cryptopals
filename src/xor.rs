@@ -80,6 +80,45 @@ pub trait XorRepeaterExt: Iterator {
 
 impl<I: Iterator> XorRepeaterExt for I {}
 
+pub struct XorBytewise<I, J>
+where
+    I: Iterator,
+    J: Iterator,
+{
+    left: I,
+    right: J,
+}
+
+impl<I, J> Iterator for XorBytewise<I, J>
+where
+    I: Iterator,
+    I::Item: Borrow<u8>,
+    J: Iterator,
+    J::Item: Borrow<u8>,
+{
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.left.next()?.borrow() ^ self.right.next()?.borrow())
+    }
+}
+
+pub trait XorBytewiseExt: Iterator {
+    fn xor_bytewise<I>(self, stream: I) -> XorBytewise<Self, <I as IntoIterator>::IntoIter>
+    where
+        Self: Sized,
+        I: IntoIterator,
+        <I as IntoIterator>::Item: Borrow<u8>,
+    {
+        XorBytewise {
+            left: self,
+            right: stream.into_iter(),
+        }
+    }
+}
+
+impl<I: Iterator> XorBytewiseExt for I {}
+
 pub fn search<T>(data: T) -> Option<(f64, u8)>
 where
     T: IntoIterator,
