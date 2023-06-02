@@ -470,4 +470,34 @@ mod tests {
             "WW8sIFZJUCBMZXQncyBraWNrIGl0IEljZSwgSWNlLCBiYWJ5IEljZSwgSWNlLCBiYWJ5IA=="
         );
     }
+
+    #[test]
+    fn fixed_nonce() {
+        let vuln = vuln::fixed_ctr_nonce::new();
+        let ciphers = vuln.ciphers();
+
+        // Use our previous search function to find the best single byte XOR key of a
+        // cross-section of the cipher-texts. The most likely key will have the highest
+        // frequency analysis score as it will decode all ciphertexts to ASCII characters.
+        let key: Vec<u8> = (0..)
+            .map_while(|ofs| {
+                let cross: Vec<_> = ciphers
+                    .iter()
+                    .filter_map(|cipher| cipher.get(ofs))
+                    .collect();
+                // Only try to decode cross-sections that we have enough data for.
+                if cross.len() < 3 * ciphers.len() / 4 {
+                    return None;
+                }
+                xor::search(ciphers.iter().filter_map(|cipher| cipher.get(ofs)))
+            })
+            .map(|(_, guess)| guess)
+            .collect();
+
+        for (i, cipher) in ciphers.iter().enumerate() {
+            let plain = xor::bytewise(&key, cipher).collect::<Vec<_>>();
+            let plain = String::from_utf8_lossy(&plain);
+            assert!(vuln.check_prefix(i, &plain));
+        }
+    }
 }

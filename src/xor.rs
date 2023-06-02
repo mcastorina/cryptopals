@@ -126,7 +126,8 @@ where
 {
     use super::freq::*;
     let data: Vec<_> = data.into_iter().map(|b| *b.borrow()).collect();
-    (0x00..=0xff)
+    let result = (0x00..=0xff)
         .map(|key| (data.iter().xor_repeat(key).ascii_freq_score(), key))
-        .max_by(|(a, _), (b, _)| a.total_cmp(b))
+        .max_by(|(a, _), (b, _)| a.total_cmp(b))?;
+    result.0.is_finite().then_some(result)
 }

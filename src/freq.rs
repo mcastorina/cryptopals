@@ -48,10 +48,12 @@ where
     <T as IntoIterator>::Item: IntoIterator,
     <<T as IntoIterator>::Item as IntoIterator>::Item: Borrow<u8>,
 {
-    data.into_iter()
+    let result = data
+        .into_iter()
         .map(|d| d.into_iter().map(|b| *b.borrow()).collect::<Vec<_>>())
         .map(|d| (analyze(&d), d))
-        .max_by(|(a, _), (b, _)| a.total_cmp(b))
+        .max_by(|(a, _), (b, _)| a.total_cmp(b))?;
+    result.0.is_finite().then_some(result)
 }
 
 // Computes the hamming distance between two (same length) iterators. The distance is the number of
