@@ -31,6 +31,7 @@ Spoilers ahead!
     * [Challenge 3-17: The CBC padding oracle](#challenge-3-17-the-cbc-padding-oracle)
     * [Challenge 3-18: Implement CTR, the stream cipher mode](#challenge-3-18-implement-ctr-the-stream-cipher-mode)
     * [Challenge 3-19: Break fixed-nonce CTR mode using substitutions](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions)
+    * [Challenge 3-20: Break fixed-nonce CTR statistically](#challenge-3-20-break-fixed-nonce-ctr-statistically)
 
 
 ## Learnings
@@ -870,3 +871,12 @@ fn fixed_nonce() {
     }
 }
 ```
+
+
+### Challenge 3-20: Break fixed-nonce CTR statistically
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/20)
+
+I basically did this in the [previous challenge](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions).
+Oops. It certainly solidifies the danger of using a fixed nonce though, which
+is very cool.
