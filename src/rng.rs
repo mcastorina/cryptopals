@@ -196,6 +196,13 @@ impl MersenneTwister {
     }
 }
 
+impl Iterator for MersenneTwister {
+    type Item = u32;
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.next())
+    }
+}
+
 pub struct MersenneTwisterIter<T: Copy> {
     mt: MersenneTwister,
     buffer: [u8; 4],

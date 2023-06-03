@@ -501,4 +501,12 @@ mod tests {
             assert!(vuln.check_prefix(i, &plain));
         }
     }
+
+    #[test]
+    fn mersenne_twister() {
+        assert_eq!(
+            rng::MersenneTwister::new(0).take(7).collect::<Vec<u32>>(),
+            [2357136044, 2546248239, 3071714933, 3626093760, 2588848963, 3684848379, 2340255427]
+        );
+    }
 }

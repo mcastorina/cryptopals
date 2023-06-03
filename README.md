@@ -32,6 +32,7 @@ Spoilers ahead!
     * [Challenge 3-18: Implement CTR, the stream cipher mode](#challenge-3-18-implement-ctr-the-stream-cipher-mode)
     * [Challenge 3-19: Break fixed-nonce CTR mode using substitutions](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions)
     * [Challenge 3-20: Break fixed-nonce CTR statistically](#challenge-3-20-break-fixed-nonce-ctr-statistically)
+    * [Challenge 3-21: Implement the MT19937 Mersenne Twister RNG](#challenge-3-21-implement-the-mt19937-mersenne-twister-rng)
 
 
 ## Learnings
@@ -52,6 +53,18 @@ Spoilers ahead!
   more specific and idiomatic. It's not good practice to generalize over both
   because it makes the code much slower and less clear. I'm abusing it a lot
   with these solutions so I can have nicer looking APIs though.
+* [AES](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) uses Galois
+  Fields of 2⁸ specifically because it has some nice properties (like addition
+  is XOR). It is rooted in polynomial modular arithmetic, which is a hard thing
+  to grasp, but you don't really need to know the theory to implement each
+  step. The high level steps of AES encryption are:
+    * Take the **key** and expand it into a collection of **round keys**
+    * Break the **plaintext** into 4x4 **blocks** of 16 bytes each
+    * Perform a series of transformations on each **block** using the **round keys**
+        * Each of these transformations are reversible
+    * Join the blocks together and return the **ciphertext**
+* [MaybeUninit](https://doc.rust-lang.org/std/mem/union.MaybeUninit.html) can
+  be used to unsafely initialize a type.
 
 
 ## Set 1: Basics
@@ -880,3 +893,27 @@ fn fixed_nonce() {
 I basically did this in the [previous challenge](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions).
 Oops. It certainly solidifies the danger of using a fixed nonce though, which
 is very cool.
+
+
+### Challenge 3-21: Implement the MT19937 Mersenne Twister RNG
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/21)
+
+Hmm.. a PRNG you say? Sounds perfect as an infinite iterator! I also got a
+little fancy here and implemented an `into_iter<T>` method which converts the
+`MersenneTwister` into an iterator where each item is `T`. It does this by
+allocating an uninitialzed `T` and filling it with bytes from the RNG.
+
+Side note: mathematical algorithms have *way* too many single letter variables.
+Here are the ones from Mersenne Twister (that I need to rename): `W`, `N`, `M`,
+`R`, `A`, `U`, `D`, `S`, `B`, `T`, `C`, `L`, `F`.
+
+```rust
+#[test]
+fn mersenne_twister() {
+    assert_eq!(
+        rng::MersenneTwister::new(0).take(7).collect::<Vec<u32>>(),
+        [2357136044, 2546248239, 3071714933, 3626093760, 2588848963, 3684848379, 2340255427]
+    );
+}
+```
