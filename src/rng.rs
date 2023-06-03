@@ -134,6 +134,67 @@ impl<T: Copy> Iterator for Stream<T> {
     }
 }
 
+const W: u32 = 32;
+const N: usize = 624;
+const M: usize = 397;
+const R: u32 = 31;
+const A: u32 = 0x9908b0df;
+const U: u32 = 11;
+const D: u32 = 0xffffffff;
+const S: u32 = 7;
+const B: u32 = 0x9d2c5680;
+const T: u32 = 15;
+const C: u32 = 0xefc60000;
+const L: u32 = 18;
+const F: u32 = 1812433253;
+
+const LOWER_MASK: u32 = (1 << R) - 1;
+const UPPER_MASK: u32 = !LOWER_MASK;
+
+pub struct MersenneTwister {
+    state: [u32; N],
+    index: usize,
+}
+
+impl MersenneTwister {
+    pub fn new(seed: u32) -> Self {
+        let mut state = [0; N];
+        state[0] = seed;
+        for i in 1..N {
+            let (next, _) = F.overflowing_mul(state[i - 1] ^ (state[i - 1] >> (W - 2)));
+            state[i] = next + i as u32;
+        }
+        Self { state, index: N }
+    }
+
+    pub fn next(&mut self) -> u32 {
+        if self.index >= N {
+            self.twist();
+        }
+
+        let mut y = self.state[self.index];
+        y ^= (y >> U) & D;
+        y ^= (y << S) & B;
+        y ^= (y << T) & C;
+        y ^= y >> L;
+
+        self.index += 1;
+        y
+    }
+
+    fn twist(&mut self) {
+        for i in 0..N {
+            let x = (self.state[i] & UPPER_MASK) | (self.state[(i + 1) % N] & LOWER_MASK);
+            let mut x_a = x >> 1;
+            if x % 2 != 0 {
+                x_a ^= A;
+            }
+            self.state[i] = self.state[(i + M) % N] ^ x_a;
+        }
+        self.index = 0;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +233,20 @@ mod tests {
             assert!((1_i8..=10).contains(&got));
         }
         assert!(results.iter().all(|&e| e));
+    }
+
+    #[test]
+    fn test_mersenne() {
+        let mut mt = MersenneTwister::new(0);
+        assert_eq!(mt.next(), 2357136044);
+        assert_eq!(mt.next(), 2546248239);
+        assert_eq!(mt.next(), 3071714933);
+        assert_eq!(mt.next(), 3626093760);
+        assert_eq!(mt.next(), 2588848963);
+        assert_eq!(mt.next(), 3684848379);
+        assert_eq!(mt.next(), 2340255427);
+        assert_eq!(mt.next(), 3638918503);
+        assert_eq!(mt.next(), 1819583497);
+        assert_eq!(mt.next(), 2678185683);
     }
 }
