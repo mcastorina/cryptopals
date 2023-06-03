@@ -11,23 +11,19 @@ pub fn gen<T: Copy>() -> T {
     }
     // TODO: Look into Blum Blum Shub when we have a BigNumber module.
     let mut f = fs::File::open("/dev/urandom").unwrap();
-    unsafe {
-        // Allocate memory for T using the global allocator.
-        let layout = alloc::Layout::new::<T>();
-        let ptr = alloc::alloc(layout);
-        if ptr.is_null() {
-            // Abort on error.
-            alloc::handle_alloc_error(layout);
-        }
-        // Convert raw pointer into a slice of u8.
-        let mut slice = slice::from_raw_parts_mut(ptr, size);
-        // Fill the slice with bytes from /dev/urandom.
-        f.read_exact(&mut slice).unwrap();
-        // Copy the data into a local variable, deallocate the heap space, and return the result.
-        let result = *(ptr as *mut T);
-        alloc::dealloc(ptr, layout);
-        result
-    }
+
+    // Allocate an unitialized instance of Self::Item.
+    let item = unsafe { mem::MaybeUninit::uninit().assume_init() };
+
+    // Get a mutable [u8] representation of it.
+    let mut slice = unsafe {
+        let ptr = mem::transmute::<&T, *mut u8>(&item);
+        slice::from_raw_parts_mut(ptr, size)
+    };
+
+    // Fill the slice with bytes from /dev/urandom.
+    f.read_exact(&mut slice).unwrap();
+    item
 }
 
 // Provides a random T within a range. This function panics if you give it stupid ranges.
@@ -107,23 +103,18 @@ struct Stream<T: Copy> {
 
 impl<T: Copy> Stream<T> {
     fn gen(&mut self) -> T {
-        unsafe {
-            // Allocate memory for T using the global allocator.
-            let layout = alloc::Layout::new::<T>();
-            let ptr = alloc::alloc(layout);
-            if ptr.is_null() {
-                // Abort on error.
-                alloc::handle_alloc_error(layout);
-            }
-            // Convert raw pointer into a slice of u8.
-            let mut slice = slice::from_raw_parts_mut(ptr, self.size);
-            // Fill the slice with bytes from /dev/urandom.
-            self.source.read_exact(&mut slice).unwrap();
-            // Copy the data into a local variable, deallocate the heap space, and return the result.
-            let result = *(ptr as *mut T);
-            alloc::dealloc(ptr, layout);
-            result
-        }
+        // Allocate an unitialized instance of Self::Item.
+        let item = unsafe { mem::MaybeUninit::uninit().assume_init() };
+
+        // Get a mutable [u8] representation of it.
+        let mut slice = unsafe {
+            let ptr = mem::transmute::<&T, *mut u8>(&item);
+            slice::from_raw_parts_mut(ptr, self.size)
+        };
+
+        // Fill the slice with bytes from /dev/urandom.
+        self.source.read_exact(&mut slice).unwrap();
+        item
     }
 }
 
