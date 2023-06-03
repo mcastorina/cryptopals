@@ -1,4 +1,5 @@
-use std::{alloc, fs, io::Read, marker, mem, ops, slice};
+use std::io::{self, Read};
+use std::{alloc, fs, marker, mem, ops, slice};
 
 // Generates a random object using a cryptographically secure pseudorandom number generator
 // (CSPRNG). This implementation currently reads from /dev/urandom, which is not performant, but
@@ -193,6 +194,57 @@ impl MersenneTwister {
         }
         self.index = 0;
     }
+
+    pub fn into_iter<T: Copy>(self) -> impl Iterator<Item = T> {
+        MersenneTwisterIter {
+            mt: self,
+            buffer: [0; 4],
+            index: 0,
+            phantom: marker::PhantomData,
+        }
+    }
+}
+
+pub struct MersenneTwisterIter<T: Copy> {
+    mt: MersenneTwister,
+    buffer: [u8; 4],
+    index: usize,
+    phantom: marker::PhantomData<T>,
+}
+
+impl<T: Copy> MersenneTwisterIter<T> {
+    const SIZE: usize = mem::size_of::<T>();
+
+    fn next_byte(&mut self) -> u8 {
+        if self.index == 0 {
+            // Refill buffer.
+            self.buffer = self.mt.next().to_be_bytes();
+        }
+        let ret = self.buffer[self.index];
+        self.index = (self.index + 1) % 4;
+        ret
+    }
+}
+
+impl<T: Copy> Iterator for MersenneTwisterIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Allocate an unitialized instance of Self::Item.
+        let item = unsafe { mem::MaybeUninit::uninit().assume_init() };
+
+        // Get a mutable [u8] representation of it.
+        let slice = unsafe {
+            let ptr = mem::transmute::<&T, *mut u8>(&item);
+            slice::from_raw_parts_mut(ptr, Self::SIZE)
+        };
+
+        // Fill the slice with bytes from MersenneTwister.
+        for i in 0..slice.len() {
+            slice[i] = self.next_byte();
+        }
+        Some(item)
+    }
 }
 
 #[cfg(test)]
@@ -248,5 +300,16 @@ mod tests {
         assert_eq!(mt.next(), 3638918503);
         assert_eq!(mt.next(), 1819583497);
         assert_eq!(mt.next(), 2678185683);
+    }
+
+    #[test]
+    fn test_mersenne_into_iter() {
+        assert_eq!(
+            MersenneTwister::new(0)
+                .into_iter()
+                .take(2)
+                .collect::<Vec<u16>>(),
+            [0x7f8c, 0xac0a],
+        );
     }
 }
