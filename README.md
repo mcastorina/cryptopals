@@ -33,6 +33,7 @@ Spoilers ahead!
     * [Challenge 3-19: Break fixed-nonce CTR mode using substitutions](#challenge-3-19-break-fixed-nonce-ctr-mode-using-substitutions)
     * [Challenge 3-20: Break fixed-nonce CTR statistically](#challenge-3-20-break-fixed-nonce-ctr-statistically)
     * [Challenge 3-21: Implement the MT19937 Mersenne Twister RNG](#challenge-3-21-implement-the-mt19937-mersenne-twister-rng)
+    * [Challenge 3-22: Crack an MT19937 seed](#challenge-3-22-crack-an-mt19937-seed)
 
 
 ## Learnings
@@ -914,6 +915,45 @@ fn mersenne_twister() {
     assert_eq!(
         rng::MersenneTwister::new(0).take(7).collect::<Vec<u32>>(),
         [2357136044, 2546248239, 3071714933, 3626093760, 2588848963, 3684848379, 2340255427]
+    );
+}
+```
+
+
+### Challenge 3-22: Crack an MT19937 seed
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/22)
+
+This is pretty simple if you have an idea when the program started. It's pretty
+quick to start iterating from then until we find the seed that returns the
+observed number.
+
+```rust
+#[test]
+fn crack_mersenne() {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::thread;
+
+    fn timestamp() -> u32 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32
+    }
+
+    let program_start = timestamp();
+    thread::sleep(Duration::from_secs(rng::range(40..=1000)));
+    let observed_number = rng::MersenneTwister::new(timestamp()).next();
+    thread::sleep(Duration::from_secs(rng::range(40..=1000)));
+
+    let seed = (program_start..).find(|&seed| {
+        let mut mt = rng::MersenneTwister::new(seed);
+        mt.next() == observed_number
+    }).unwrap();
+
+    assert_eq!(
+        rng::MersenneTwister::new(seed).next(),
+        observed_number,
     );
 }
 ```

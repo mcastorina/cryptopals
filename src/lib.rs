@@ -509,4 +509,33 @@ mod tests {
             [2357136044, 2546248239, 3071714933, 3626093760, 2588848963, 3684848379, 2340255427]
         );
     }
+
+    #[test]
+    #[ignore]
+    fn crack_mersenne() {
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+        use std::thread;
+
+        fn timestamp() -> u32 {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32
+        }
+
+        let program_start = timestamp();
+        thread::sleep(Duration::from_secs(rng::range(40..=1000)));
+        let observed_number = rng::MersenneTwister::new(timestamp()).next();
+        thread::sleep(Duration::from_secs(rng::range(40..=1000)));
+
+        let seed = (program_start..).find(|&seed| {
+            let mut mt = rng::MersenneTwister::new(seed);
+            mt.next() == observed_number
+        }).unwrap();
+
+        assert_eq!(
+            rng::MersenneTwister::new(seed).next(),
+            observed_number,
+        );
+    }
 }
