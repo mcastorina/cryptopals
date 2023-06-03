@@ -1,6 +1,5 @@
-use crate::aes::{self, *};
+use crate::aes;
 use crate::b64::*;
-use crate::freq;
 use crate::rng;
 use crate::xor::*;
 

@@ -220,9 +220,10 @@ mod tests {
         // This will be None if vuln is using CBC.
         let block_size = (1..=256)
             .find(|&size| {
-                let cipher: Vec<u8> = vuln.gen_cipher(iter::repeat(b'A').take(size * 2)).collect();
+                let cipher: Vec<u8> = vuln.gen_cipher(iter::repeat(b'A').take(size * 3)).collect();
                 let mut chunks = cipher.chunks(size);
-                chunks.next() == chunks.next()
+                let (a, b, c) = (chunks.next(), chunks.next(), chunks.next());
+                a == b && b == c
             })
             .unwrap();
         assert_eq!(block_size, aes::BLOCK_SIZE);
