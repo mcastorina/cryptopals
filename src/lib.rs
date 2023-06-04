@@ -513,8 +513,8 @@ mod tests {
     #[test]
     #[ignore]
     fn crack_mersenne() {
-        use std::time::{Duration, SystemTime, UNIX_EPOCH};
         use std::thread;
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
         fn timestamp() -> u32 {
             SystemTime::now()
@@ -528,14 +528,60 @@ mod tests {
         let observed_number = rng::MersenneTwister::new(timestamp()).next();
         thread::sleep(Duration::from_secs(rng::range(40..=1000)));
 
-        let seed = (program_start..).find(|&seed| {
-            let mut mt = rng::MersenneTwister::new(seed);
-            mt.next() == observed_number
-        }).unwrap();
+        let seed = (program_start..)
+            .find(|&seed| {
+                let mut mt = rng::MersenneTwister::new(seed);
+                mt.next() == observed_number
+            })
+            .unwrap();
 
-        assert_eq!(
-            rng::MersenneTwister::new(seed).next(),
-            observed_number,
-        );
+        assert_eq!(rng::MersenneTwister::new(seed).next(), observed_number,);
+    }
+
+    #[test]
+    fn untemper_mersenne() {
+        let mut mt = rng::MersenneTwister::new(rng::gen());
+
+        // Magic untemper function.
+        fn untemper(mut n: u32) -> u32 {
+            // Reverse 'y >> 18'
+            //  The upper 18 bits of y are unchanged, so we can directly get the lower 14 bits to
+            //  XOR with.
+            n ^= n >> 18;
+            // Reverse 'y << 15 & C'
+            //  We do this in two steps because we lost some information by shifting less than 16
+            //  bits. The lower 15 bits are unchanged, so we get the next 15 bits, then the last
+            //  2.
+            let cmask = 0x7fff;
+            n ^= (n << 15) & 0xefc60000 & (cmask << 15);
+            n ^= (n << 15) & 0xefc60000 & (cmask << 30);
+            // Reverse 'y << 7 & B'
+            //  We do the same recovery as before, but it takes more steps because we only go 7
+            //  bits at a time.
+            let smask = 0x7f;
+            n ^= (n << 7) & 0x9d2c5680 & (smask << 7);
+            n ^= (n << 7) & 0x9d2c5680 & (smask << 14);
+            n ^= (n << 7) & 0x9d2c5680 & (smask << 21);
+            n ^= (n << 7) & 0x9d2c5680 & (smask << 28);
+            // Reverse 'y >> 11'
+            //  We go left to right this time since the shift direction is reversed.
+            let umask = 0x7ff;
+            n ^= (n >> 11) & (umask << 22);
+            n ^= (n >> 11) & (umask << 11);
+            n ^= (n >> 11) & umask;
+            n
+        }
+
+        let mut state = [0; 624];
+        let mut index = 0;
+        while index < 624 {
+            state[index] = untemper(mt.next());
+            index += 1;
+        }
+        let mut spliced = unsafe { rng::MersenneTwister::from_state(state) };
+
+        for (a, b) in mt.zip(spliced).take(1000) {
+            assert_eq!(a, b);
+        }
     }
 }

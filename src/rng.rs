@@ -144,7 +144,7 @@ const LOWER_MASK: u32 = (1 << R) - 1;
 const UPPER_MASK: u32 = !LOWER_MASK;
 
 pub struct MersenneTwister {
-    state: [u32; N],
+    pub state: [u32; N],
     index: usize,
 }
 
@@ -156,6 +156,11 @@ impl MersenneTwister {
             let (next, _) = F.overflowing_mul(state[i - 1] ^ (state[i - 1] >> (W - 2)));
             state[i] = next + i as u32;
         }
+        Self { state, index: N }
+    }
+
+    // This is unsafe because the internal state may not have been properly initialized.
+    pub unsafe fn from_state(state: [u32; N]) -> Self {
         Self { state, index: N }
     }
 
