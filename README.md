@@ -37,7 +37,8 @@ Spoilers ahead!
     * [Challenge 3-23: Clone an MT19937 RNG from its output](#challenge-3-23-clone-an-mt19937-rng-from-its-output)
     * [Challenge 3-24: Create the MT19937 stream cipher and break it](#challenge-3-24-create-the-mt19937-stream-cipher-and-break-it)
 * [Set 4: Stream crypto and randomness](#set-4-stream-crypto-and-randomness)
-    * [Challenge 4-25: Break "random access read/write" AES CTR](#challenge-4-25-break-random-access-read-write-aes-ctr)
+    * [Challenge 4-25: Break "random access read/write" AES CTR](#challenge-4-25-break-random-access-readwrite-aes-ctr)
+    * [Challenge 4-26: CTR bitflipping](#challenge-4-26-ctr-bitflipping)
 
 
 ## Learnings
