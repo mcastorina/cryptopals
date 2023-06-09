@@ -35,6 +35,7 @@ Spoilers ahead!
     * [Challenge 3-21: Implement the MT19937 Mersenne Twister RNG](#challenge-3-21-implement-the-mt19937-mersenne-twister-rng)
     * [Challenge 3-22: Crack an MT19937 seed](#challenge-3-22-crack-an-mt19937-seed)
     * [Challenge 3-23: Clone an MT19937 RNG from its output](#challenge-3-23-clone-an-mt19937-rng-from-its-output)
+    * [Challenge 3-24: Create the MT19937 stream cipher and break it](#challenge-3-24-create-the-mt19937-stream-cipher-and-break-it)
 
 
 ## Learnings
@@ -1015,5 +1016,85 @@ fn untemper_mersenne() {
     for (a, b) in mt.zip(spliced).take(1000) {
         assert_eq!(a, b);
     }
+}
+```
+
+
+### Challenge 3-24: Create the MT19937 stream cipher and break it
+
+[Challenge link](https://cryptopals.com/sets/3/challenges/24)
+
+I wasn't too sure what this one was asking, but it was mostly brute-forcing by
+taking educated guesses. The password reset token one was fun though, and it's
+neat to crack something and then be able to generate your own token whenever
+you want (if this were a real system). As mentioned previously, my
+`into_iter<T>` method came in handy for converting the PRNG into a stream of
+bytes, so that was cool.
+
+```rust
+#[test]
+fn mersenne_stream_cipher() {
+    use std::thread;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    let vuln = vuln::mt19937_stream::new();
+
+    // Generate a ciphertext of a random prefix followed by a known plaintext.
+    let cipher = vuln
+        .gen_blob(iter::repeat(b'A').take(14))
+        .collect::<Vec<_>>();
+
+    let prefix_len = cipher.len() - 14;
+    // Extract the Mersenne Twister stream using the known plaintext.
+    let mt_stream = cipher
+        .iter()
+        .skip(prefix_len)
+        .xor_repeat(b'A')
+        .collect::<Vec<_>>();
+
+    // Brute force it now that we know the output bytes and that the seed is only 16 bits.
+    let seed = (0..)
+        .find(|&seed| {
+            rng::MersenneTwister::new(seed as u32)
+                .into_iter::<u8>()
+                .skip(prefix_len)
+                .zip(mt_stream.iter().copied())
+                .all(|(a, b)| a == b)
+        })
+        .unwrap();
+    assert!(vuln.check_seed(seed));
+
+    // Generate two unique password reset tokens.
+    let token_a: Vec<u8> = vuln.password_reset_token().collect();
+    let ofs: u32 = 1;
+    thread::sleep(Duration::from_secs(ofs as u64));
+    let token_b: Vec<u8> = vuln.password_reset_token().collect();
+
+    // XORing these two tokens, we'll get the two PRNG streams XORed together.
+    let target: Vec<u8> = xor::bytewise(&token_a, &token_b).collect();
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+    // Brute force a known area for two PRNGs to XOR to the same target.
+    let seed = (current_time - 100..=current_time)
+        .find(|&seed| {
+            let stream_a = rng::MersenneTwister::new(seed).into_iter::<u8>();
+            let stream_b = rng::MersenneTwister::new(seed + ofs).into_iter::<u8>();
+            freq::hamming(stream_a.xor_bytewise(stream_b), &target) == 0
+        })
+        .unwrap();
+
+    // Recover the key by XORing the PRNG with the original token.
+    let key: Vec<u8> = rng::MersenneTwister::new(seed)
+        .into_iter::<u8>()
+        .xor_bytewise(&token_a)
+        .collect();
+
+    // Confirm that we can create our own expiration tokens.
+    let cracked_token = rng::MersenneTwister::new(current_time - 60)
+        .into_iter::<u8>()
+        .xor_bytewise(&key);
+    assert!(vuln.valid_reset_token(cracked_token));
 }
 ```
