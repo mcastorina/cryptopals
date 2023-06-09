@@ -671,4 +671,22 @@ mod tests {
             .collect::<String>();
         assert_eq!(plain, include_str!("data/set7-plain.txt"));
     }
+
+    #[test]
+    fn ctr_bit_flip() {
+        // Our user input gets prepended with 32 bytes and appended with 42 bytes before encryption.
+        let vuln = vuln::ctr_bits::new();
+
+        // Choose a plaintext that we can easily flip bits with. The only prevented characters are
+        // ';' and '=', so we use ':' and '<' as they are both one bit off.
+        let cookie = vuln.cookie_for(":admin<true").unwrap();
+        assert_eq!(vuln.is_admin(&cookie).unwrap(), false);
+
+        let mut cipher: Vec<u8> = cookie.b64_decode().collect();
+        cipher[32] ^= 0x1; // Transform : into ;
+        cipher[38] ^= 0x1; // Transform < into =
+
+        let cookie: String = cipher.iter().b64_collect();
+        assert_eq!(vuln.is_admin(cookie).unwrap(), true);
+    }
 }

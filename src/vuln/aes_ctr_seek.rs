@@ -3,7 +3,6 @@ use crate::b64::*;
 use crate::rng;
 use crate::xor::*;
 use std::borrow::Borrow;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn new() -> VulnAesCtrSeek {
     let (key, nonce) = rng::gen();
