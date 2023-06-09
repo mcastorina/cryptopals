@@ -89,6 +89,16 @@ where
     right: J,
 }
 
+impl<I, J> XorBytewise<I, J>
+where
+    I: Iterator,
+    J: Iterator,
+{
+    pub fn new(left: I, right: J) -> Self {
+        Self { left, right }
+    }
+}
+
 impl<I, J> Iterator for XorBytewise<I, J>
 where
     I: Iterator,

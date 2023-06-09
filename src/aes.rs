@@ -1,4 +1,4 @@
-use crate::xor;
+use crate::xor::{self, *};
 use std::borrow::Borrow;
 use std::iter::Peekable;
 
@@ -557,6 +557,37 @@ pub trait TryAesCbcDecryptExt: Iterator {
 }
 
 impl<I: Iterator> TryAesCbcDecryptExt for I {}
+
+pub struct AesCtrIter<I: Iterator> {
+    stream: I,
+}
+
+impl<I: Iterator<Item = u8>> Iterator for AesCtrIter<I> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.stream.next()
+    }
+}
+
+pub trait AesCtrIterExt: Iterator {
+    fn aes_ctr(
+        self,
+        key: impl Into<Key128>,
+        nonce: u64,
+    ) -> AesCtrIter<XorBytewise<Self, Box<dyn Iterator<Item = u8>>>>
+    where
+        Self: Sized,
+        Self::Item: Borrow<u8>,
+    {
+        let ctr_stream = ctr(key.into(), nonce);
+        AesCtrIter {
+            stream: XorBytewise::new(self, Box::new(ctr_stream)),
+        }
+    }
+}
+
+impl<I: Iterator> AesCtrIterExt for I {}
 
 // Given a vector of plaintext, truncate the PKCS#7 padding if there's any there.
 pub fn strip_padding(block: &mut Vec<u8>) -> Option<usize> {

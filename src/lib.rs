@@ -464,7 +464,7 @@ mod tests {
         let input = "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==";
         let result: String = input
             .b64_decode()
-            .xor_bytewise(aes::ctr(*b"YELLOW SUBMARINE", 0))
+            .aes_ctr(*b"YELLOW SUBMARINE", 0)
             .b64_collect();
         assert_eq!(
             result,
