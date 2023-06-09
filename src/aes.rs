@@ -1,6 +1,6 @@
 use crate::xor::{self, *};
 use std::borrow::Borrow;
-use std::iter::Peekable;
+use std::iter::{Flatten, Peekable};
 
 // AES supports three key sizes: 128-bit, 224-bit, and 256-bit. This implementation is only for
 // 128-bit (16-byte) key sizes.
@@ -411,17 +411,18 @@ impl<I: Iterator> Aes128CbcDecryptorExt for I {}
 pub struct Aes128Encryptor<I: Iterator> {
     upstream: I,
     round_keys: [RoundKey; 11],
-    buffer_index: usize,
-    encrypted_buffer: [u8; BLOCK_SIZE],
     padded: bool,
     chain: Option<[u8; BLOCK_SIZE]>,
 }
 
-impl<I: Iterator> Aes128Encryptor<I>
+// Implement Iterator trait for Aes128Encryptor.
+impl<I: Iterator> Iterator for Aes128Encryptor<I>
 where
     <I as Iterator>::Item: Borrow<u8>,
 {
-    fn refill_buffer(&mut self) -> Option<()> {
+    type Item = [u8; BLOCK_SIZE];
+
+    fn next(&mut self) -> Option<Self::Item> {
         // Get a block of plaintext from the upstream iterator.
         let mut plain = [0; BLOCK_SIZE];
         for i in 0..BLOCK_SIZE {
@@ -445,48 +446,32 @@ where
                 return None;
             }
         }
-        if let Some(chain) = self.chain {
-            self.encrypted_buffer = encrypt_block(xor::fixed(plain, chain), self.round_keys);
+        let output = if let Some(chain) = self.chain {
+            let output = encrypt_block(xor::fixed(plain, chain), self.round_keys);
             // Save the chain for the next encryption block.
-            self.chain = Some(self.encrypted_buffer);
+            self.chain = Some(output);
+            output
         } else {
-            self.encrypted_buffer = encrypt_block(plain, self.round_keys);
-        }
-        Some(())
-    }
-}
-
-// Implement Iterator trait for Aes128Encryptor.
-impl<I: Iterator> Iterator for Aes128Encryptor<I>
-where
-    <I as Iterator>::Item: Borrow<u8>,
-{
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.buffer_index == 0 {
-            self.refill_buffer()?;
-        }
-        let next = self.encrypted_buffer[self.buffer_index];
-        self.buffer_index = (self.buffer_index + 1) % BLOCK_SIZE;
-        Some(next)
+            encrypt_block(plain, self.round_keys)
+        };
+        Some(output)
     }
 }
 
 // Trait extension to add aes_ecb_encrypt method to any iterator.
 pub trait Aes128EcbEncryptorExt: Iterator {
-    fn aes_ecb_encrypt(self, key: impl Into<Key128>) -> Aes128Encryptor<Self>
+    fn aes_ecb_encrypt(self, key: impl Into<Key128>) -> Flatten<Aes128Encryptor<Self>>
     where
         Self: Sized,
+        <Self as Iterator>::Item: Borrow<u8>,
     {
         Aes128Encryptor {
             upstream: self,
             round_keys: key.into().round_keys(),
-            buffer_index: 0,
-            encrypted_buffer: [0; BLOCK_SIZE],
             padded: false,
             chain: None,
         }
+        .flatten()
     }
 }
 
@@ -494,18 +479,22 @@ impl<I: Iterator> Aes128EcbEncryptorExt for I {}
 
 // Trait extension to add aes_cbc_encrypt method to any iterator.
 pub trait Aes128CbcEncryptorExt: Iterator {
-    fn aes_cbc_encrypt(self, key: impl Into<Key128>, iv: [u8; BLOCK_SIZE]) -> Aes128Encryptor<Self>
+    fn aes_cbc_encrypt(
+        self,
+        key: impl Into<Key128>,
+        iv: [u8; BLOCK_SIZE],
+    ) -> Flatten<Aes128Encryptor<Self>>
     where
         Self: Sized,
+        <Self as Iterator>::Item: Borrow<u8>,
     {
         Aes128Encryptor {
             upstream: self,
             round_keys: key.into().round_keys(),
-            buffer_index: 0,
-            encrypted_buffer: [0; BLOCK_SIZE],
             padded: false,
             chain: Some(iv),
         }
+        .flatten()
     }
 }
 
