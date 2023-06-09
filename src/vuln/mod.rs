@@ -1,3 +1,4 @@
+pub mod aes_ctr_seek;
 pub mod aes_mode;
 pub mod cbc_bits;
 pub mod cbc_padding;

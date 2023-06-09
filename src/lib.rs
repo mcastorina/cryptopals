@@ -650,4 +650,25 @@ mod tests {
             .xor_bytewise(&key);
         assert!(vuln.valid_reset_token(cracked_token));
     }
+
+    #[test]
+    fn aes_ctr_ram() {
+        let mut vuln = vuln::aes_ctr_seek::new();
+        // Read the original cipher text.
+        let cipher = vuln.read().clone();
+        // Replace it all with our chosen plaintext.
+        vuln.edit(0, iter::repeat(b'A').take(cipher.len()));
+        // Recover the original plaintext by XORing the two ciphertexts and our known plaintext.
+        // This works because the same keystream is reused:
+        //  cipher     = plain     ^ keystream
+        //  new_cipher = new_plain ^ keystream
+        //  cipher ^ new_cipher               = plain ^ new_plain
+        //  (cipher ^ new_cipher) ^ new_plain = plain
+        let plain = iter::repeat(b'A')
+            .xor_bytewise(vuln.read())
+            .xor_bytewise(cipher)
+            .map(char::from)
+            .collect::<String>();
+        assert_eq!(plain, include_str!("data/set7-plain.txt"));
+    }
 }

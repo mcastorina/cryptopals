@@ -36,6 +36,8 @@ Spoilers ahead!
     * [Challenge 3-22: Crack an MT19937 seed](#challenge-3-22-crack-an-mt19937-seed)
     * [Challenge 3-23: Clone an MT19937 RNG from its output](#challenge-3-23-clone-an-mt19937-rng-from-its-output)
     * [Challenge 3-24: Create the MT19937 stream cipher and break it](#challenge-3-24-create-the-mt19937-stream-cipher-and-break-it)
+* [Set 4: Stream crypto and randomness](#set-4-stream-crypto-and-randomness)
+    * [Challenge 4-25: Break "random access read/write" AES CTR](#challenge-4-25-break-random-access-read-write-aes-ctr)
 
 
 ## Learnings
@@ -1096,5 +1098,43 @@ fn mersenne_stream_cipher() {
         .into_iter::<u8>()
         .xor_bytewise(&key);
     assert!(vuln.valid_reset_token(cracked_token));
+}
+```
+
+
+## Set 4: Stream crypto and randomness
+
+### Challenge 4-25: Break "random access read/write" AES CTR
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/25)
+
+The hard part of this challenge was implementing the "edit mode" of the cipher.
+I decided to implement it naively to not spend too much time on it. My solution
+simply generates the AES CTR stream and skips the offset, which doesn't take
+advantage of the fact that you can randomly access different blocks of the
+data. I'm still performing AES encryption for every block. Maybe I can make an
+`aes_ctr_splice` method which will actually do the random access calculations,
+but for now I think it's fine.
+
+```rust
+#[test]
+fn aes_ctr_ram() {
+    let mut vuln = vuln::aes_ctr_seek::new();
+    // Read the original cipher text.
+    let cipher = vuln.read().clone();
+    // Replace it all with our chosen plaintext.
+    vuln.edit(0, iter::repeat(b'A').take(cipher.len()));
+    // Recover the original plaintext by XORing the two ciphertexts and our known plaintext.
+    // This works because the same keystream is reused:
+    //  cipher     = plain     ^ keystream
+    //  new_cipher = new_plain ^ keystream
+    //  cipher ^ new_cipher               = plain ^ new_plain
+    //  (cipher ^ new_cipher) ^ new_plain = plain
+    let plain = iter::repeat(b'A')
+        .xor_bytewise(vuln.read())
+        .xor_bytewise(cipher)
+        .map(char::from)
+        .collect::<String>();
+    assert_eq!(plain, include_str!("data/set7-plain.txt"));
 }
 ```

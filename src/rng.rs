@@ -1,5 +1,5 @@
-use std::io::{self, Read};
-use std::{alloc, fs, marker, mem, ops, slice};
+use std::io::Read;
+use std::{fs, marker, mem, ops, slice};
 
 // Generates a random object using a cryptographically secure pseudorandom number generator
 // (CSPRNG). This implementation currently reads from /dev/urandom, which is not performant, but
