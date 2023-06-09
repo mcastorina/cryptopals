@@ -154,7 +154,7 @@ impl MersenneTwister {
         state[0] = seed;
         for i in 1..N {
             let (next, _) = F.overflowing_mul(state[i - 1] ^ (state[i - 1] >> (W - 2)));
-            state[i] = next + i as u32;
+            (state[i], _) = next.overflowing_add(i as u32);
         }
         Self { state, index: N }
     }
@@ -191,7 +191,7 @@ impl MersenneTwister {
         self.index = 0;
     }
 
-    pub fn into_iter<T: Copy>(self) -> impl Iterator<Item = T> {
+    pub fn into_iter<T: Copy>(self) -> MersenneTwisterIter<T> {
         MersenneTwisterIter {
             mt: self,
             buffer: [0; 4],
