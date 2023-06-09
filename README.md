@@ -38,7 +38,7 @@ Spoilers ahead!
     * [Challenge 3-24: Create the MT19937 stream cipher and break it](#challenge-3-24-create-the-mt19937-stream-cipher-and-break-it)
 * [Set 4: Stream crypto and randomness](#set-4-stream-crypto-and-randomness)
     * [Challenge 4-25: Break "random access read/write" AES CTR](#challenge-4-25-break-random-access-readwrite-aes-ctr)
-    * [Challenge 4-26: CTR bitflipping](#challenge-4-26-ctr-bitflipping)
+    * [Challenge 4-27: Recover the key from CBC with IV=Key](#challenge-4-27-recover-the-key-from-cbc-with-ivkey)
 
 
 ## Learnings
@@ -1167,6 +1167,65 @@ fn ctr_bit_flip() {
     cipher[38] ^= 0x1; // Transform < into =
 
     let cookie: String = cipher.iter().b64_collect();
+    assert_eq!(vuln.is_admin(cookie).unwrap(), true);
+}
+```
+
+
+### Challenge 4-27: Recover the key from CBC with IV=Key
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/27)
+
+This one was very cool. I had alway heard that using the key for the IV is bad
+practice but I neven knew *why*. Following the instructions got me through it,
+but I had to stare at [some diagrams](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Cipher_block_chaining_(CBC))
+before it clicked. We first get a ciphertext chunk **C₀** that is **E(P₀ ⊕
+key)**. Then when we decrypt **[C₀, 0, C₀]**, we are given back **[P₀, ?, 0 ⊕
+P₀ ⊕ key]**. To get the key is simply XORing **P₀** with **(P₀ ⊕ key)**!
+
+```rust
+#[test]
+fn cbc_key_iv() {
+    let vuln = vuln::cbc_iv::new();
+
+    let cookie = vuln.cookie_for("AAAAAAAAAAAAAAAA").unwrap();
+    assert!(cookie.b64_decode().count() >= 3 * aes::BLOCK_SIZE);
+
+    let chunk = cookie.b64_decode().aes_nth_block(0).unwrap();
+    // Construct a cookie using [C₀, 0, C₀].
+    let bad_cookie: String = [chunk, [0; aes::BLOCK_SIZE], chunk]
+        .iter()
+        .flatten()
+        .b64_collect();
+    // Give the bad cookie for decryption and capture the returned error plaintext.
+    let err = vuln.is_admin(bad_cookie).unwrap_err();
+    let plaintext: Vec<u8> = match err.split_once(": ").unwrap() {
+        // We can just take the valid UTF-8 but not ASCII bytes.
+        ("unexpected bytes found during decryption", s) => s.bytes().collect(),
+        // We need to convert the message from a string representation of [b₀, b₁, ..].
+        ("not utf8", s) => s
+            .chars()
+            .filter(|&b| b.is_ascii_digit() || b == ',')
+            .collect::<String>()
+            .split(',')
+            .map(|item| item.parse().unwrap())
+            .collect(),
+        _ => unreachable!(),
+    };
+
+    // Recover the key as the first and third plaintext blocks XORed together.
+    let key: [u8; aes::BLOCK_SIZE] = xor::bytewise(
+        plaintext.iter().aes_nth_block(0).unwrap(),
+        plaintext.iter().aes_nth_block(2).unwrap(),
+    )
+    .aes_nth_block(0)
+    .unwrap();
+
+    // Make our own cookie.
+    let cookie: String = "pwnd;admin=true"
+        .bytes()
+        .aes_cbc_encrypt(key, key)
+        .b64_collect();
     assert_eq!(vuln.is_admin(cookie).unwrap(), true);
 }
 ```
