@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
-use std::iter;
+use std::iter::{self, Flatten};
+use std::mem;
 use std::num::Wrapping;
 
 // Initial hash values.
@@ -80,6 +81,66 @@ where
     output
 }
 
+pub struct Sha1Hash<I: Iterator> {
+    upstream: Option<I>,
+    hash: Option<[u8; 20]>,
+    index: usize,
+}
+
+impl<I: Iterator> Iterator for Sha1Hash<I>
+where
+    I::Item: Borrow<u8>,
+{
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // If we don't have the hash yet, consume the iterator and generate the hash.
+        if self.hash.is_none() {
+            let upstream = mem::replace(&mut self.upstream, None)?;
+            self.hash = Some(sum(upstream));
+        }
+        if self.index >= 20 {
+            return None;
+        }
+        // Hash will always be Some, but safely unwrap anyway.
+        let ret = self.hash?[self.index];
+        self.index += 1;
+        Some(ret)
+    }
+}
+
+pub trait Sha1HashExt: Iterator {
+    fn sha1sum(self) -> Sha1Hash<Self>
+    where
+        Self: Sized,
+    {
+        Sha1Hash {
+            upstream: Some(self),
+            hash: None,
+            index: 0,
+        }
+    }
+}
+
+impl<I: Iterator> Sha1HashExt for I {}
+
+// Trait extension to add sha1sum method to anything that can be &str.
+pub trait Sha1HashStrExt<I> {
+    fn sha1sum(&self) -> Sha1Hash<std::str::Bytes<'_>>
+    where
+        I: Iterator<Item = u8>;
+}
+
+impl<S: AsRef<str>> Sha1HashStrExt<std::str::Bytes<'_>> for S {
+    fn sha1sum(&self) -> Sha1Hash<std::str::Bytes<'_>> {
+        Sha1Hash {
+            upstream: Some(self.as_ref().bytes()),
+            hash: None,
+            index: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +169,14 @@ mod tests {
                 .into_iter()
                 .hex_collect::<String>(),
             "293e3964d2b4d4ba9d21991b8388283b4f09b935",
+        );
+    }
+
+    #[test]
+    fn test_extensions() {
+        assert_eq!(
+            "abc".sha1sum().hex_collect::<String>(),
+            "a9993e364706816aba3e25717850c26c9cd0d89d",
         );
     }
 }
