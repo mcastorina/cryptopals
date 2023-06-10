@@ -11,7 +11,7 @@ const H3: u32 = 0x10325476;
 const H4: u32 = 0xC3D2E1F0;
 
 // Perform the hash function on any arbitrary iterator of bytes.
-fn sum<I>(input: I) -> [u8; 20]
+pub fn sum<I>(input: I) -> [u8; 20]
 where
     I: IntoIterator,
     <I as IntoIterator>::Item: Borrow<u8>,

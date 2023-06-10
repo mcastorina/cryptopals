@@ -39,6 +39,7 @@ Spoilers ahead!
 * [Set 4: Stream crypto and randomness](#set-4-stream-crypto-and-randomness)
     * [Challenge 4-25: Break "random access read/write" AES CTR](#challenge-4-25-break-random-access-readwrite-aes-ctr)
     * [Challenge 4-27: Recover the key from CBC with IV=Key](#challenge-4-27-recover-the-key-from-cbc-with-ivkey)
+    * [Challenge 4-28: Implement a SHA-1 keyed MAC](#challenge-4-28-implement-a-sha-1-keyed-mac)
 
 
 ## Learnings
@@ -1229,5 +1230,29 @@ fn cbc_key_iv() {
         .aes_cbc_encrypt(key, key)
         .b64_collect();
     assert_eq!(vuln.is_admin(cookie).unwrap(), true);
+}
+```
+
+
+### Challenge 4-28: Implement a SHA-1 keyed MAC
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/28)
+
+I decided to write my own
+[sha1sum implementation](https://github.com/mcastorina/cryptopals/blob/fb46edd4ac601d790eccb42634790252256b3ec8/src/sha1.rs#L13-L82)
+using Wikipedia's pseudocode, which was easier than I expected! As for writing a
+MAC, I peeked ahead and saw we would be breaking it, so I went ahead and put it
+in a vulnerable system. Since I'm leaning so much into iterators, I could just
+chain the `key` and `msg` together and feed that into `sha1::sum`.
+
+```rust
+#[test]
+fn sha1_mac() {
+    let vuln_a = vuln::sha1_prefix::new();
+    let vuln_b = vuln::sha1_prefix::new();
+    let message = "hello world";
+    let mac_a: String = vuln_a.mac(message).hex_collect();
+    let mac_b: String = vuln_b.mac(message).hex_collect();
+    assert_ne!(mac_a, mac_b);
 }
 ```

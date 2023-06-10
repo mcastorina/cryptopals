@@ -13,6 +13,7 @@ mod tests {
     use super::b64::*;
     use super::freq::*;
     use super::hex::*;
+    use super::sha1::*;
     use super::xor::*;
     use super::*;
     use std::iter;
@@ -736,5 +737,15 @@ mod tests {
             .aes_cbc_encrypt(key, key)
             .b64_collect();
         assert_eq!(vuln.is_admin(cookie).unwrap(), true);
+    }
+
+    #[test]
+    fn sha1_mac() {
+        let vuln_a = vuln::sha1_prefix::new();
+        let vuln_b = vuln::sha1_prefix::new();
+        let message = "hello world";
+        let mac_a: String = vuln_a.mac(message).hex_collect();
+        let mac_b: String = vuln_b.mac(message).hex_collect();
+        assert_ne!(mac_a, mac_b);
     }
 }
