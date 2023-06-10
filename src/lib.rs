@@ -744,8 +744,76 @@ mod tests {
         let vuln_a = vuln::sha1_prefix::new();
         let vuln_b = vuln::sha1_prefix::new();
         let message = "hello world";
-        let mac_a: String = vuln_a.mac(message).hex_collect();
-        let mac_b: String = vuln_b.mac(message).hex_collect();
+        let (_, mac_a) = vuln_a.cookie_for(message).unwrap();
+        let (_, mac_b) = vuln_b.cookie_for(message).unwrap();
         assert_ne!(mac_a, mac_b);
+    }
+
+    #[test]
+    fn sha1_mac_prefix() {
+        let vuln = vuln::sha1_prefix::new();
+
+        // Generate a MAC to a known plaintext.
+        let (cookie, mac) = vuln.cookie_for("hello").unwrap();
+        assert_eq!(vuln.is_admin(&cookie, &mac).unwrap(), false);
+
+        // Recover the internal state (it's just the hash).
+        let state = {
+            let mut iter = mac.hex_decode();
+            let mut mac_chunks =
+                iter::from_fn(|| Some([iter.next()?, iter.next()?, iter.next()?, iter.next()?]));
+            let mut state = [0_u32; 5];
+            for (i, chunk) in mac_chunks.enumerate() {
+                state[i] = u32::from_be_bytes(chunk);
+            }
+            state
+        };
+
+        // Get the raw message.
+        let message = cookie.b64_decode().collect::<Vec<_>>();
+        let extra_message = ";admin=true";
+
+        // Helper method to extend the original message with our extra message. We need to guess
+        // the secret keysize correctly for it to work.
+        let extend_message = |keysize_guess: usize| {
+            // The length of the original MACed message rounded up to a multiple of 64 (to include
+            // padding). We are treating this plus our extra_message as the entire message that
+            // will be hashed.
+            let padded_len: usize = (message.len() + keysize_guess + 63) & !63;
+
+            // Extend the existing hash with our extra_message. We need to generate the padding
+            // ourselves, and we say the message length is the original message (plus padding) plus
+            // our extra message.
+            let new_mac = unsafe {
+                sha1::sum_nopad_with_state(
+                    extra_message
+                        .bytes()
+                        .chain(sha1::md_padding(8 * extra_message.len() as u64))
+                        .take(56)
+                        .chain(((padded_len + extra_message.len()) * 8).to_be_bytes())
+                        .collect(),
+                    state,
+                )
+                .into_iter()
+                .hex_collect::<String>()
+            };
+
+            // Rewrite the message to say it's the original message plus padding and our extra
+            // message.
+            let new_message = message
+                .iter()
+                .copied()
+                .chain(sha1::md_padding(8 * (message.len() + keysize_guess) as u64))
+                .chain(extra_message.bytes())
+                .b64_collect::<String>();
+            (new_message, new_mac)
+        };
+
+        // Guess the length of the secret prefix up to 64 bytes.
+        let (new_message, new_mac) = (1..64)
+            .map(extend_message)
+            .find(|(new_message, new_mac)| vuln.is_admin(&new_message, &new_mac).is_ok())
+            .unwrap();
+        assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
     }
 }

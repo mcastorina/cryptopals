@@ -16,27 +16,23 @@ where
     I: IntoIterator,
     <I as IntoIterator>::Item: Borrow<u8>,
 {
-    unsafe { sum_with(input, H0, H1, H2, H3, H4) }
+    let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
+    let ml: u64 = 8 * input.len() as u64;
+    // Pad our input to be a multiple of 64 bytes.
+    input.extend(md_padding(ml));
+    unsafe { sum_nopad_with_state(input, [H0, H1, H2, H3, H4]) }
 }
 
-// Perform the hash function on any arbitrary iterator of bytes initialized with any hash value.
-pub unsafe fn sum_with<I>(input: I, h0: u32, h1: u32, h2: u32, h3: u32, h4: u32) -> [u8; 20]
-where
-    I: IntoIterator,
-    <I as IntoIterator>::Item: Borrow<u8>,
-{
-    let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
-    // Message length in bits.
-    let ml: u64 = 8 * input.len() as u64;
-    // Add padding so we have a mulitple of 512 bits (64 bytes).
-    input.extend(md_padding(ml));
-
+// Perform the hash function on the input bytes initialized with the provided state.
+// The input is assumed to be padded to a multiple of 64 bytes. If it is not, the last N bytes will
+// be ignored.
+pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 5]) -> [u8; 20] {
     let (mut h0, mut h1, mut h2, mut h3, mut h4) = (
-        Wrapping(h0),
-        Wrapping(h1),
-        Wrapping(h2),
-        Wrapping(h3),
-        Wrapping(h4),
+        Wrapping(state[0]),
+        Wrapping(state[1]),
+        Wrapping(state[2]),
+        Wrapping(state[3]),
+        Wrapping(state[4]),
     );
     // Operate on chunks of 512 bits (64 bytes).
     for chunk in input.chunks_exact(64) {
@@ -90,9 +86,9 @@ pub fn md_padding(ml: u64) -> impl Iterator<Item = u8> {
     // Always pad with one bit.
     // Then pad enough 0 bits to get the length 64 bits less than a multiple of 512.
     // Then always pad with the message length.
-    let ml_bytes = (ml / 8) as usize;
+    let len = (ml / 8) as usize;
     iter::once(0x80)
-        .chain(iter::repeat(0).take(63 - ((ml_bytes + 8) % 64)))
+        .chain(iter::repeat(0).take(63 - ((len + 8) % 64)))
         .chain(ml.to_be_bytes().into_iter())
 }
 
@@ -164,7 +160,11 @@ mod tests {
     #[test]
     fn test_sum() {
         assert_eq!(
-            sum("abc".bytes()).into_iter().hex_collect::<String>(),
+            sum(b"").into_iter().hex_collect::<String>(),
+            "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        );
+        assert_eq!(
+            sum(b"abc").into_iter().hex_collect::<String>(),
             "a9993e364706816aba3e25717850c26c9cd0d89d",
         );
         assert_eq!(
