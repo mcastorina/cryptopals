@@ -19,13 +19,8 @@ where
     let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
     // Message length in bits.
     let ml: u64 = 8 * input.len() as u64;
-    // Append a single bit.
-    input.push(0x80);
-    // Append enough 0 bits to get the length 64 bits less than a multiple of 512.
-    input.extend(iter::repeat(0).take((64 - ((input.len() + 8) % 64)) % 64));
-    // Append the 64-bit length (8 bytes).
-    input.extend_from_slice(&ml.to_be_bytes());
-    // At this point, we have 512 bits (64 bytes).
+    // Add padding so we have a mulitple of 512 bits (64 bytes).
+    input.extend(md_padding(ml));
 
     let (mut h0, mut h1, mut h2, mut h3, mut h4) = (
         Wrapping(H0),
@@ -79,6 +74,17 @@ where
             output[i] = byte;
         });
     output
+}
+
+// Generate Merkle–Damgård padding for a message of length ml bits.
+pub fn md_padding(ml: u64) -> impl Iterator<Item = u8> {
+    // Always pad with one bit.
+    // Then pad enough 0 bits to get the length 64 bits less than a multiple of 512.
+    // Then always pad with the message length.
+    let ml_bytes = (ml / 8) as usize;
+    iter::once(0x80)
+        .chain(iter::repeat(0).take(63 - ((ml_bytes + 8) % 64)))
+        .chain(ml.to_be_bytes().into_iter())
 }
 
 pub struct Sha1Hash<I: Iterator> {

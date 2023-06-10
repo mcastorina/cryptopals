@@ -5,7 +5,7 @@ use crate::sha1;
 
 // Creates a new vulnerable system to exploit.
 pub fn new() -> VulnSha1Prefix {
-    VulnSha1Prefix{ key: rng::gen() }
+    VulnSha1Prefix { key: rng::gen() }
 }
 
 pub struct VulnSha1Prefix {
