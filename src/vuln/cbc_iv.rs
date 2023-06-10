@@ -20,8 +20,7 @@ impl VulnCbcIv {
     fn decrypt(&self, cookie: &str) -> Result<String, String> {
         let decrypted: Vec<u8> = cookie
             .b64_decode()
-            .aes_cbc_decrypt(self.key, self.key)
-            .collect();
+            .try_aes_cbc_decrypt(self.key, self.key)?;
         let output =
             String::from_utf8(decrypted.clone()).map_err(|_| format!("not utf8: {decrypted:?}"))?;
         if !output.is_ascii() {

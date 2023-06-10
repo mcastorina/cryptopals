@@ -1192,10 +1192,12 @@ fn cbc_key_iv() {
     assert!(cookie.b64_decode().count() >= 3 * aes::BLOCK_SIZE);
 
     let chunk = cookie.b64_decode().aes_nth_block(0).unwrap();
-    // Construct a cookie using [C₀, 0, C₀].
+    // Construct a cookie using [C₀, 0, C₀]. We chain the original cookie to avoid padding
+    // errors during decryption.
     let bad_cookie: String = [chunk, [0; aes::BLOCK_SIZE], chunk]
-        .iter()
+        .into_iter()
         .flatten()
+        .chain(cookie.b64_decode())
         .b64_collect();
     // Give the bad cookie for decryption and capture the returned error plaintext.
     let err = vuln.is_admin(bad_cookie).unwrap_err();
