@@ -16,6 +16,15 @@ where
     I: IntoIterator,
     <I as IntoIterator>::Item: Borrow<u8>,
 {
+    unsafe { sum_with(input, H0, H1, H2, H3, H4) }
+}
+
+// Perform the hash function on any arbitrary iterator of bytes initialized with any hash value.
+pub unsafe fn sum_with<I>(input: I, h0: u32, h1: u32, h2: u32, h3: u32, h4: u32) -> [u8; 20]
+where
+    I: IntoIterator,
+    <I as IntoIterator>::Item: Borrow<u8>,
+{
     let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
     // Message length in bits.
     let ml: u64 = 8 * input.len() as u64;
@@ -23,11 +32,11 @@ where
     input.extend(md_padding(ml));
 
     let (mut h0, mut h1, mut h2, mut h3, mut h4) = (
-        Wrapping(H0),
-        Wrapping(H1),
-        Wrapping(H2),
-        Wrapping(H3),
-        Wrapping(H4),
+        Wrapping(h0),
+        Wrapping(h1),
+        Wrapping(h2),
+        Wrapping(h3),
+        Wrapping(h4),
     );
     // Operate on chunks of 512 bits (64 bytes).
     for chunk in input.chunks_exact(64) {
