@@ -3,6 +3,7 @@ mod b64;
 mod freq;
 mod hex;
 mod rng;
+mod sha1;
 mod vuln;
 mod xor;
 
