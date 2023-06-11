@@ -1,7 +1,7 @@
 use crate::b64::*;
 use crate::hex::*;
 use crate::rng;
-use crate::sha1;
+use crate::hash::sha1;
 use std::borrow::Borrow;
 
 // Creates a new vulnerable system to exploit.

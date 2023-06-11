@@ -3,7 +3,7 @@ mod b64;
 mod freq;
 mod hex;
 mod rng;
-mod sha1;
+mod hash;
 mod vuln;
 mod xor;
 
@@ -13,7 +13,7 @@ mod tests {
     use super::b64::*;
     use super::freq::*;
     use super::hex::*;
-    use super::sha1::*;
+    use super::hash::*;
     use super::xor::*;
     use super::*;
     use std::iter;
