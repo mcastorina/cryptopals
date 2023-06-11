@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::mem;
 use std::num::Wrapping as W;
 
 const H0: u32 = 0x67452301;
@@ -16,8 +15,14 @@ where
     let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
     // Pad our input to be a multiple of 64 bytes.
     input.extend(super::md_padding_le(input.len()));
+    unsafe { sum_nopad_with_state(input, [H0, H1, H2, H3]) }
+}
 
-    let (mut h0, mut h1, mut h2, mut h3) = (W(H0), W(H1), W(H2), W(H3));
+// Perform the hash function on the input bytes initialized with the provided state.
+// The input is assumed to be padded to a multiple of 64 bytes. If it is not, the last N bytes will
+// be ignored.
+pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 4]) -> [u8; 16] {
+    let (mut h0, mut h1, mut h2, mut h3) = (W(state[0]), W(state[1]), W(state[2]), W(state[3]));
     let (f, g, h) = (w(f), w(g), w(h));
 
     for chunk in input.chunks_exact(64) {
@@ -98,6 +103,31 @@ fn h(x: u32, y: u32, z: u32) -> u32 {
     x ^ y ^ z
 }
 
+// Trait extension to md4sum method to any iterator.
+pub trait Md4HashExt: Iterator {
+    fn md4sum(self) -> std::array::IntoIter<u8, 16>
+    where
+        Self: Sized,
+        Self::Item: Borrow<u8>,
+    {
+        sum(self).into_iter()
+    }
+}
+
+impl<I: Iterator> Md4HashExt for I {}
+
+// Trait extension to add md4sum method to anything that can be &str.
+pub trait Md4HashStrExt: AsRef<str> {
+    fn md4sum(&self) -> std::array::IntoIter<u8, 16>
+    where
+        Self: Sized,
+    {
+        sum(self.as_ref().bytes()).into_iter()
+    }
+}
+
+impl<S: AsRef<str>> Md4HashStrExt for S {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,7 +155,7 @@ mod tests {
         ];
         for (input, expected) in tests {
             assert_eq!(
-                sum(input.bytes()).into_iter().hex_collect::<String>(),
+                input.md4sum().hex_collect::<String>(),
                 expected,
                 "failed test for input {input:?}"
             );

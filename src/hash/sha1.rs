@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
-use std::mem;
-use std::num::Wrapping;
+use std::num::Wrapping as W;
 
 // Initial hash values.
 const H0: u32 = 0x67452301;
@@ -26,11 +25,11 @@ where
 // be ignored.
 pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 5]) -> [u8; 20] {
     let (mut h0, mut h1, mut h2, mut h3, mut h4) = (
-        Wrapping(state[0]),
-        Wrapping(state[1]),
-        Wrapping(state[2]),
-        Wrapping(state[3]),
-        Wrapping(state[4]),
+        W(state[0]),
+        W(state[1]),
+        W(state[2]),
+        W(state[3]),
+        W(state[4]),
     );
     // Operate on chunks of 512 bits (64 bytes).
     for chunk in input.chunks_exact(64) {
@@ -53,18 +52,14 @@ pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 5]) -> [u8; 20] 
                 60..=79 => (b ^ c ^ d, 0xCA62C1D6),
                 _ => unreachable!(),
             };
-            let temp = Wrapping(a.rotate_left(5))
-                + Wrapping(f)
-                + Wrapping(e)
-                + Wrapping(k)
-                + Wrapping(words[i]);
+            let temp = W(a.rotate_left(5)) + W(f) + W(e) + W(k) + W(words[i]);
             (e, d, c, b, a) = (d, c, b.rotate_left(30), a, temp.0);
         }
-        h0 += Wrapping(a);
-        h1 += Wrapping(b);
-        h2 += Wrapping(c);
-        h3 += Wrapping(d);
-        h4 += Wrapping(e);
+        h0 += W(a);
+        h1 += W(b);
+        h2 += W(c);
+        h3 += W(d);
+        h4 += W(e);
     }
 
     // Construct the final output.
@@ -79,65 +74,30 @@ pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 5]) -> [u8; 20] 
     output
 }
 
-pub struct Sha1Hash<I: Iterator> {
-    upstream: Option<I>,
-    hash: Option<[u8; 20]>,
-    index: usize,
-}
-
-impl<I: Iterator> Iterator for Sha1Hash<I>
-where
-    I::Item: Borrow<u8>,
-{
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // If we don't have the hash yet, consume the iterator and generate the hash.
-        if self.hash.is_none() {
-            let upstream = mem::replace(&mut self.upstream, None)?;
-            self.hash = Some(sum(upstream));
-        }
-        if self.index >= 20 {
-            return None;
-        }
-        // Hash will always be Some, but safely unwrap anyway.
-        let ret = self.hash?[self.index];
-        self.index += 1;
-        Some(ret)
-    }
-}
-
+// Trait extension to sha1sum method to any iterator.
 pub trait Sha1HashExt: Iterator {
-    fn sha1sum(self) -> Sha1Hash<Self>
+    fn sha1sum(self) -> std::array::IntoIter<u8, 20>
     where
         Self: Sized,
+        Self::Item: Borrow<u8>,
     {
-        Sha1Hash {
-            upstream: Some(self),
-            hash: None,
-            index: 0,
-        }
+        sum(self).into_iter()
     }
 }
 
 impl<I: Iterator> Sha1HashExt for I {}
 
 // Trait extension to add sha1sum method to anything that can be &str.
-pub trait Sha1HashStrExt<I> {
-    fn sha1sum(&self) -> Sha1Hash<std::str::Bytes<'_>>
+pub trait Sha1HashStrExt: AsRef<str> {
+    fn sha1sum(&self) -> std::array::IntoIter<u8, 20>
     where
-        I: Iterator<Item = u8>;
-}
-
-impl<S: AsRef<str>> Sha1HashStrExt<std::str::Bytes<'_>> for S {
-    fn sha1sum(&self) -> Sha1Hash<std::str::Bytes<'_>> {
-        Sha1Hash {
-            upstream: Some(self.as_ref().bytes()),
-            hash: None,
-            index: 0,
-        }
+        Self: Sized,
+    {
+        sum(self.as_ref().bytes()).into_iter()
     }
 }
+
+impl<S: AsRef<str>> Sha1HashStrExt for S {}
 
 #[cfg(test)]
 mod tests {
