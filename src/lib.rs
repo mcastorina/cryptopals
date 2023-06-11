@@ -787,10 +787,11 @@ mod tests {
             // our extra message.
             let mut sha_input = extra_message
                 .bytes()
-                .chain(hash::md_padding(extra_message.len()))
+                .chain(hash::md_padding(
+                    extra_message.len(),
+                    (8 * message_len as u64).to_be_bytes(),
+                ))
                 .collect::<Vec<_>>();
-            // Overwrite the length with our forged message length.
-            sha_input.splice(56..64, (8 * message_len as u64).to_be_bytes());
             let new_mac = unsafe {
                 sha1::sum_nopad_with_state(sha_input, state)
                     .into_iter()
@@ -802,7 +803,7 @@ mod tests {
             let new_message = message
                 .iter()
                 .copied()
-                .chain(hash::md_padding(message.len() + keysize_guess))
+                .chain(hash::md_padding_be(message.len() + keysize_guess))
                 .chain(extra_message.bytes())
                 .b64_collect::<String>();
             (new_message, new_mac)

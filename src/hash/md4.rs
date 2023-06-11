@@ -1,0 +1,134 @@
+use std::borrow::Borrow;
+use std::mem;
+use std::num::Wrapping as W;
+
+const H0: u32 = 0x67452301;
+const H1: u32 = 0xefcdab89;
+const H2: u32 = 0x98badcfe;
+const H3: u32 = 0x10325476;
+
+// Perform the hash function on any arbitrary iterator of bytes.
+pub fn sum<I>(input: I) -> [u8; 16]
+where
+    I: IntoIterator,
+    <I as IntoIterator>::Item: Borrow<u8>,
+{
+    let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
+    // Pad our input to be a multiple of 64 bytes.
+    input.extend(super::md_padding_le(input.len()));
+
+    let (mut h0, mut h1, mut h2, mut h3) = (W(H0), W(H1), W(H2), W(H3));
+    let (f, g, h) = (w(f), w(g), w(h));
+
+    for chunk in input.chunks_exact(64) {
+        let mut words = [W(0); 16];
+        for (i, bytes) in chunk.chunks_exact(4).enumerate() {
+            words[i] = W(u32::from_le_bytes(bytes.try_into().unwrap()));
+        }
+
+        let (mut a, mut b, mut c, mut d) = (h0, h1, h2, h3);
+        // Round 1
+        for i in [0, 4, 8, 12] {
+            a = W((a + f(b, c, d) + words[i + 0]).0.rotate_left(3));
+            d = W((d + f(a, b, c) + words[i + 1]).0.rotate_left(7));
+            c = W((c + f(d, a, b) + words[i + 2]).0.rotate_left(11));
+            b = W((b + f(c, d, a) + words[i + 3]).0.rotate_left(19));
+        }
+        // Round 2
+        for i in [0, 1, 2, 3] {
+            a = W((a + g(b, c, d) + words[i + 0] + W(0x5a827999))
+                .0
+                .rotate_left(3));
+            d = W((d + g(a, b, c) + words[i + 4] + W(0x5a827999))
+                .0
+                .rotate_left(5));
+            c = W((c + g(d, a, b) + words[i + 8] + W(0x5a827999))
+                .0
+                .rotate_left(9));
+            b = W((b + g(c, d, a) + words[i + 12] + W(0x5a827999))
+                .0
+                .rotate_left(13));
+        }
+        // Round 3
+        for i in [0, 2, 1, 3] {
+            a = W((a + h(b, c, d) + words[i + 0] + W(0x6ed9eba1))
+                .0
+                .rotate_left(3));
+            d = W((d + h(a, b, c) + words[i + 8] + W(0x6ed9eba1))
+                .0
+                .rotate_left(9));
+            c = W((c + h(d, a, b) + words[i + 4] + W(0x6ed9eba1))
+                .0
+                .rotate_left(11));
+            b = W((b + h(c, d, a) + words[i + 12] + W(0x6ed9eba1))
+                .0
+                .rotate_left(15));
+        }
+
+        h0 += a;
+        h1 += b;
+        h2 += c;
+        h3 += d;
+    }
+
+    // Construct the final output.
+    let mut output = [0; 16];
+    [h0, h1, h2, h3]
+        .iter()
+        .flat_map(|h| h.0.to_le_bytes())
+        .enumerate()
+        .for_each(|(i, byte)| {
+            output[i] = byte;
+        });
+    output
+}
+
+// Helper function to convert non-wrapped functions into wrapped ones.
+fn w(f: fn(u32, u32, u32) -> u32) -> impl Fn(W<u32>, W<u32>, W<u32>) -> W<u32> {
+    move |a: W<u32>, b: W<u32>, c: W<u32>| -> W<u32> { W(f(a.0, b.0, c.0)) }
+}
+
+fn f(x: u32, y: u32, z: u32) -> u32 {
+    (x & y) | (!x & z)
+}
+fn g(x: u32, y: u32, z: u32) -> u32 {
+    (x & y) | (x & z) | (y & z)
+}
+fn h(x: u32, y: u32, z: u32) -> u32 {
+    x ^ y ^ z
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hex::*;
+
+    #[test]
+    fn test_sum() {
+        let tests = vec![
+            ("", "31d6cfe0d16ae931b73c59d7e0c089c0"),
+            ("a", "bde52cb31de33e46245e05fbdbd6fb24"),
+            ("abc", "a448017aaf21d8525fc10ae87aa6729d"),
+            ("message digest", "d9130a8164549fe818874806e1c7014b"),
+            (
+                "abcdefghijklmnopqrstuvwxyz",
+                "d79e1c308aa5bbcdeea8ed63df412da9",
+            ),
+            (
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+                "043f8582f241db351ce627e153e7f0e4",
+            ),
+            (
+                "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+                "e33b4ddc9c38f2199c3e7b164fcc0536",
+            ),
+        ];
+        for (input, expected) in tests {
+            assert_eq!(
+                sum(input.bytes()).into_iter().hex_collect::<String>(),
+                expected,
+                "failed test for input {input:?}"
+            );
+        }
+    }
+}

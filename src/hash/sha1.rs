@@ -17,7 +17,7 @@ where
 {
     let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
     // Pad our input to be a multiple of 64 bytes.
-    input.extend(super::md_padding(input.len()));
+    input.extend(super::md_padding_be(input.len()));
     unsafe { sum_nopad_with_state(input, [H0, H1, H2, H3, H4]) }
 }
 
