@@ -1,9 +1,9 @@
 mod aes;
 mod b64;
 mod freq;
+mod hash;
 mod hex;
 mod rng;
-mod hash;
 mod vuln;
 mod xor;
 
@@ -12,8 +12,8 @@ mod tests {
     use super::aes::*;
     use super::b64::*;
     use super::freq::*;
+    use super::hash::{self, *};
     use super::hex::*;
-    use super::hash::*;
     use super::xor::*;
     use super::*;
     use std::iter;
@@ -787,7 +787,7 @@ mod tests {
             // our extra message.
             let mut sha_input = extra_message
                 .bytes()
-                .chain(sha1::md_padding(extra_message.len()))
+                .chain(hash::md_padding(extra_message.len()))
                 .collect::<Vec<_>>();
             // Overwrite the length with our forged message length.
             sha_input.splice(56..64, (8 * message_len as u64).to_be_bytes());
@@ -802,7 +802,7 @@ mod tests {
             let new_message = message
                 .iter()
                 .copied()
-                .chain(sha1::md_padding(message.len() + keysize_guess))
+                .chain(hash::md_padding(message.len() + keysize_guess))
                 .chain(extra_message.bytes())
                 .b64_collect::<String>();
             (new_message, new_mac)

@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::iter;
 use std::mem;
 use std::num::Wrapping;
 
@@ -18,7 +17,7 @@ where
 {
     let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
     // Pad our input to be a multiple of 64 bytes.
-    input.extend(md_padding(input.len()));
+    input.extend(super::md_padding(input.len()));
     unsafe { sum_nopad_with_state(input, [H0, H1, H2, H3, H4]) }
 }
 
@@ -78,16 +77,6 @@ pub unsafe fn sum_nopad_with_state(input: Vec<u8>, state: [u32; 5]) -> [u8; 20] 
             output[i] = byte;
         });
     output
-}
-
-// Generate Merkle–Damgård padding for a message of len bytes.
-pub fn md_padding(len: usize) -> impl Iterator<Item = u8> {
-    // Always pad with one bit.
-    // Then pad enough 0 bits to get the length 64 bits less than a multiple of 512.
-    // Then always pad with the message length.
-    iter::once(0x80)
-        .chain(iter::repeat(0).take(63 - ((len + 8) % 64)))
-        .chain((8 * len as u64).to_be_bytes().into_iter())
 }
 
 pub struct Sha1Hash<I: Iterator> {
@@ -154,6 +143,7 @@ impl<S: AsRef<str>> Sha1HashStrExt<std::str::Bytes<'_>> for S {
 mod tests {
     use super::*;
     use crate::hex::*;
+    use std::iter;
 
     #[test]
     fn test_sum() {
