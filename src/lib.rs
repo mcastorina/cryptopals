@@ -780,22 +780,21 @@ mod tests {
             // padding). We are treating this plus our extra_message as the entire message that
             // will be hashed.
             let padded_len: usize = (message.len() + keysize_guess + 63) & !63;
+            let message_len = padded_len + extra_message.len();
 
             // Extend the existing hash with our extra_message. We need to generate the padding
             // ourselves, and we say the message length is the original message (plus padding) plus
             // our extra message.
+            let mut sha_input = extra_message
+                .bytes()
+                .chain(sha1::md_padding(extra_message.len()))
+                .collect::<Vec<_>>();
+            // Overwrite the length with our forged message length.
+            sha_input.splice(56..64, (8 * message_len as u64).to_be_bytes());
             let new_mac = unsafe {
-                sha1::sum_nopad_with_state(
-                    extra_message
-                        .bytes()
-                        .chain(sha1::md_padding(8 * extra_message.len() as u64))
-                        .take(56)
-                        .chain(((padded_len + extra_message.len()) * 8).to_be_bytes())
-                        .collect(),
-                    state,
-                )
-                .into_iter()
-                .hex_collect::<String>()
+                sha1::sum_nopad_with_state(sha_input, state)
+                    .into_iter()
+                    .hex_collect::<String>()
             };
 
             // Rewrite the message to say it's the original message plus padding and our extra
@@ -803,7 +802,7 @@ mod tests {
             let new_message = message
                 .iter()
                 .copied()
-                .chain(sha1::md_padding(8 * (message.len() + keysize_guess) as u64))
+                .chain(sha1::md_padding(message.len() + keysize_guess))
                 .chain(extra_message.bytes())
                 .b64_collect::<String>();
             (new_message, new_mac)
