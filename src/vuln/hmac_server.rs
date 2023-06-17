@@ -5,6 +5,7 @@ use crate::rng;
 use std::thread;
 use std::time::Duration;
 
+#[derive(Copy, Clone)]
 pub struct VulnHmacServer {
     key: [u8; 32],
 }
@@ -16,9 +17,9 @@ pub fn new() -> VulnHmacServer {
 impl VulnHmacServer {
     // Verify the provided file contents have a valid HMAC.
     pub fn verify(&self, file: impl AsRef<[u8]>, hmac: impl AsRef<str>) -> bool {
-        let calculated = self.hmac(file);
-        let provided = hmac.as_ref().bytes().hex_decode().collect::<Vec<_>>();
-        Self::insecure_compare(&provided, &calculated)
+        let calculated = self.hmac(file).into_iter().hex_collect::<String>();
+        let provided = hmac.as_ref();
+        Self::insecure_compare(provided.as_bytes(), calculated.as_bytes())
     }
 
     fn hmac(&self, input: impl AsRef<[u8]>) -> Sha1 {
@@ -27,10 +28,13 @@ impl VulnHmacServer {
 
     // Byte at a time comparison with a time delay.
     fn insecure_compare(a: &[u8], b: &[u8]) -> bool {
-        a.iter().zip(b.iter()).all(|(l, r)| {
+        for (l, r) in a.iter().zip(b.iter()) {
+            if l != r {
+                return false;
+            }
             thread::sleep(Duration::from_millis(50));
-            l == r
-        })
+        }
+        a.len() == b.len()
     }
 }
 

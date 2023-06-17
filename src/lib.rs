@@ -819,4 +819,82 @@ mod tests {
             .unwrap();
         assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
     }
+
+    #[test]
+    #[ignore]
+    fn hmac_time() {
+        use std::time::{Duration, SystemTime};
+
+        let vuln = vuln::hmac_server::new();
+        let file = "pwnd lol";
+
+        fn time_fn<F: Fn() -> T, T>(f: F) -> (T, Duration) {
+            let start = SystemTime::now();
+            let result = f();
+            let end = SystemTime::now();
+            let duration = end.duration_since(start).unwrap();
+            (result, duration)
+        }
+
+        // This takes 670s or ~11m.
+        let mut hmac = String::new();
+        while hmac.len() < Sha1::OUTPUT_SIZE * 2 {
+            let b = b"0123456789abcdef"
+                .iter()
+                .max_by_key(|&b| {
+                    hmac.push(*b as char);
+                    let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
+                    hmac.pop();
+                    duration
+                })
+                .unwrap();
+            hmac.push(*b as char);
+        }
+        assert_eq!(vuln.verify(&file, &hmac), true);
+    }
+
+    #[test]
+    #[ignore]
+    fn hmac_time_parallel() {
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::{Duration, SystemTime};
+
+        let vuln = vuln::hmac_server::new();
+        let file = "pwnd lol";
+
+        fn time_fn<F: Fn() -> T, T>(f: F) -> (T, Duration) {
+            let start = SystemTime::now();
+            let result = f();
+            let end = SystemTime::now();
+            let duration = end.duration_since(start).unwrap();
+            (result, duration)
+        }
+
+        // This takes 46s. It could be twice as fast if the vulnerable system compared the bytes
+        // instead the hex-encoded characters.
+        let mut hmac = String::new();
+        while hmac.len() < Sha1::OUTPUT_SIZE * 2 {
+            let (tx, rx) = mpsc::channel();
+            thread::scope(|s| {
+                for b in b"0123456789abcdef" {
+                    let tx = tx.clone();
+                    let mut hmac = hmac.clone();
+                    s.spawn(move || {
+                        hmac.push(*b as char);
+                        let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
+                        tx.send((*b, duration)).unwrap();
+                    });
+                }
+            });
+            let b = rx
+                .iter()
+                .take(16)
+                .max_by_key(|&(_, d)| d)
+                .map(|(b, _)| b)
+                .unwrap();
+            hmac.push(b as char);
+        }
+        assert_eq!(vuln.verify(&file, &hmac), true);
+    }
 }

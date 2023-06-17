@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_extend() {
-        let mut mac: Mac<Sha1> = Mac::from_message("abc");
+        let mac: Mac<Sha1> = Mac::from_message("abc");
         let new_mac = mac.extend("test");
         assert_eq!(sha1::sum(new_mac.message), new_mac.hash);
     }
