@@ -41,6 +41,7 @@ Spoilers ahead!
     * [Challenge 4-27: Recover the key from CBC with IV=Key](#challenge-4-27-recover-the-key-from-cbc-with-ivkey)
     * [Challenge 4-28: Implement a SHA-1 keyed MAC](#challenge-4-28-implement-a-sha-1-keyed-mac)
     * [Challenge 4-29: Break a SHA-1 keyed MAC using length extension](#challenge-4-29-break-a-sha-1-keyed-mac-using-length-extension)
+    * [Challenge 4-30: Break an MD4 keyed MAC using length extension](#challenge-4-30-break-an-md4-keyed-mac-using-length-extension)
 
 
 ## Learnings
@@ -1354,6 +1355,56 @@ fn sha1_mac_prefix() {
     // Guess the length of the secret prefix up to 64 bytes.
     let (new_message, new_mac) = (1..64)
         .map(extend_message)
+        .find(|(new_message, new_mac)| vuln.is_admin(&new_message, &new_mac).is_ok())
+        .unwrap();
+    assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
+}
+```
+
+
+### Challenge 4-30: Break an MD4 keyed MAC using length extension
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/30)
+
+Since this challenge was so similar to the previous, I decided to implement it
+generically! I created two traits: `Hash` and `MdPadding`, and a `Mac<Hash +
+MdPadding>` struct that will do the length extension attack for any type that
+implements both traits. I know `Hash` is already a trait, but that's fine,
+right? Anyway, I refactored my previous solution to use the exact same code
+below, substituting `Md4` for `Sha1` at it works! I'm happy that it's less
+verbose, and that the annoying big-endian SHA-1 / little-endian MD4 could be
+abstracted away.
+
+```rust
+#[test]
+fn md4_mac_prefix() {
+    use mac::Mac;
+    use md4::Md4;
+    let vuln = vuln::hash_prefix::new::<Md4>();
+
+    // Generate a MAC to a known plaintext.
+    let (cookie, mac) = vuln.cookie_for("hello").unwrap();
+    assert_eq!(vuln.is_admin(&cookie, &mac).unwrap(), false);
+
+    // Get the raw message and construct the MAC.
+    let message = cookie.b64_decode().collect::<Vec<_>>();
+    let message_length = message.len();
+    let mac: Mac<Md4> = Mac::from((
+        message,
+        mac.hex_decode().collect::<Vec<_>>().try_into().unwrap(),
+    ));
+
+    // Guess the length of the secret prefix up to 64 bytes.
+    let (new_message, new_mac) = (1..64)
+        .map(|length_guess| {
+            let (new_message, new_mac) = mac
+                .extend_with(";admin=true", message_length + length_guess)
+                .into();
+            (
+                new_message.into_iter().b64_collect::<String>(),
+                new_mac.into_iter().hex_collect::<String>(),
+            )
+        })
         .find(|(new_message, new_mac)| vuln.is_admin(&new_message, &new_mac).is_ok())
         .unwrap();
     assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
