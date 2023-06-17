@@ -42,6 +42,7 @@ Spoilers ahead!
     * [Challenge 4-28: Implement a SHA-1 keyed MAC](#challenge-4-28-implement-a-sha-1-keyed-mac)
     * [Challenge 4-29: Break a SHA-1 keyed MAC using length extension](#challenge-4-29-break-a-sha-1-keyed-mac-using-length-extension)
     * [Challenge 4-30: Break an MD4 keyed MAC using length extension](#challenge-4-30-break-an-md4-keyed-mac-using-length-extension)
+    * [Challenge 4-31: Implement and break HMAC-SHA1 with an artificial timing leak](#challenge-4-31-implement-and-break-hmac-sha1-with-an-artificial-timing-leak)
 
 
 ## Learnings
@@ -1408,5 +1409,61 @@ fn md4_mac_prefix() {
         .find(|(new_message, new_mac)| vuln.is_admin(&new_message, &new_mac).is_ok())
         .unwrap();
     assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
+}
+```
+
+
+### Challenge 4-31: Implement and break HMAC-SHA1 with an artificial timing leak
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/31)
+
+This challenge asks you to create a web server, which I simulated using a
+struct and function calls. I think the challenge was trying to nudge towards
+parallel execution of the timing attack, which servers often provide. My
+solution runs in 46s since the vulnerable system is checking 40 characters
+(instead of decoding the hex string to compare 20 bytes).
+
+```rust
+#[test]
+fn hmac_time_parallel() {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, SystemTime};
+
+    let vuln = vuln::hmac_server::new();
+    let file = "pwnd lol";
+
+    fn time_fn<F: Fn() -> T, T>(f: F) -> (T, Duration) {
+        let start = SystemTime::now();
+        let result = f();
+        let end = SystemTime::now();
+        let duration = end.duration_since(start).unwrap();
+        (result, duration)
+    }
+
+    // This takes 46s. It could be twice as fast if the vulnerable system compared the bytes
+    // instead the hex-encoded characters.
+    let mut hmac = String::new();
+    while hmac.len() < Sha1::OUTPUT_SIZE * 2 {
+        let (tx, rx) = mpsc::channel();
+        for b in b"0123456789abcdef" {
+            let tx = tx.clone();
+            let mut hmac = hmac.clone();
+            thread::spawn(move || {
+                hmac.push(*b as char);
+                let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
+                tx.send((*b, duration)).unwrap();
+            });
+        }
+        drop(tx);
+
+        let b = rx
+            .iter()
+            .max_by_key(|&(_, d)| d)
+            .map(|(b, _)| b)
+            .unwrap();
+        hmac.push(b as char);
+    }
+    assert_eq!(vuln.verify(&file, &hmac), true);
 }
 ```
