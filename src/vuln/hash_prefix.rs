@@ -1,23 +1,26 @@
 use crate::b64::*;
-use crate::hash::sha1;
+use crate::hash::Hash;
 use crate::hex::*;
 use crate::rng;
 use std::borrow::Borrow;
+use std::marker::PhantomData;
 
 // Creates a new vulnerable system to exploit.
-pub fn new() -> VulnSha1Prefix {
-    VulnSha1Prefix {
+pub fn new<H: Hash>() -> VulnHashPrefix<H> {
+    VulnHashPrefix {
         key: rng::gen(),
         prefix_size: rng::range(10..=40),
+        phantom: PhantomData,
     }
 }
 
-pub struct VulnSha1Prefix {
+pub struct VulnHashPrefix<H: Hash> {
     key: [u8; 64],
     prefix_size: usize,
+    phantom: PhantomData<H>,
 }
 
-impl VulnSha1Prefix {
+impl<H: Hash> VulnHashPrefix<H> {
     fn mac<I>(&self, msg: I) -> impl Iterator<Item = u8>
     where
         I: IntoIterator,
@@ -25,7 +28,7 @@ impl VulnSha1Prefix {
     {
         let key = self.key.into_iter().take(self.prefix_size);
         let msg = msg.into_iter().map(|b| *b.borrow());
-        sha1::sum(key.chain(msg)).into_iter()
+        H::sum(key.chain(msg)).as_ref().to_owned().into_iter()
     }
 
     // Generate a cookie with the provided user data.
@@ -59,9 +62,4 @@ impl VulnSha1Prefix {
             .filter_map(|kv| kv.split_once('='))
             .any(|(key, val)| key == "admin" && val == "true"))
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

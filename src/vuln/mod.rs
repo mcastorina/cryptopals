@@ -8,5 +8,5 @@ pub mod ecb_cookie;
 pub mod ecb_prefix;
 pub mod ecb_suffix;
 pub mod fixed_ctr_nonce;
+pub mod hash_prefix;
 pub mod mt19937_stream;
-pub mod sha1_prefix;

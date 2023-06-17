@@ -742,8 +742,10 @@ mod tests {
 
     #[test]
     fn sha1_mac() {
-        let vuln_a = vuln::sha1_prefix::new();
-        let vuln_b = vuln::sha1_prefix::new();
+        use sha1::Sha1;
+
+        let vuln_a = vuln::hash_prefix::new::<Sha1>();
+        let vuln_b = vuln::hash_prefix::new::<Sha1>();
         let message = "hello world";
         let (_, mac_a) = vuln_a.cookie_for(message).unwrap();
         let (_, mac_b) = vuln_b.cookie_for(message).unwrap();
@@ -754,7 +756,7 @@ mod tests {
     fn sha1_mac_prefix() {
         use mac::Mac;
         use sha1::Sha1;
-        let vuln = vuln::sha1_prefix::new();
+        let vuln = vuln::hash_prefix::new::<Sha1>();
 
         // Generate a MAC to a known plaintext.
         let (cookie, mac) = vuln.cookie_for("hello").unwrap();
