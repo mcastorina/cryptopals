@@ -876,20 +876,19 @@ mod tests {
         let mut hmac = String::new();
         while hmac.len() < Sha1::OUTPUT_SIZE * 2 {
             let (tx, rx) = mpsc::channel();
-            thread::scope(|s| {
-                for b in b"0123456789abcdef" {
-                    let tx = tx.clone();
-                    let mut hmac = hmac.clone();
-                    s.spawn(move || {
-                        hmac.push(*b as char);
-                        let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
-                        tx.send((*b, duration)).unwrap();
-                    });
-                }
-            });
+            for b in b"0123456789abcdef" {
+                let tx = tx.clone();
+                let mut hmac = hmac.clone();
+                thread::spawn(move || {
+                    hmac.push(*b as char);
+                    let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
+                    tx.send((*b, duration)).unwrap();
+                });
+            }
+            drop(tx);
+
             let b = rx
                 .iter()
-                .take(16)
                 .max_by_key(|&(_, d)| d)
                 .map(|(b, _)| b)
                 .unwrap();
