@@ -7,10 +7,10 @@ pub type Md4 = [u8; 16];
 #[rustfmt::skip]
 // Initial hash state.
 const START: Md4 = [
-    0x67, 0x45, 0x23, 0x01,
-    0xef, 0xcd, 0xab, 0x89,
-    0x98, 0xba, 0xdc, 0xfe,
-    0x10, 0x32, 0x54, 0x76,
+    0x01, 0x23, 0x45, 0x67,
+    0x89, 0xab, 0xcd, 0xef,
+    0xfe, 0xdc, 0xba, 0x98,
+    0x76, 0x54, 0x32, 0x10,
 ];
 
 impl Hash for Md4 {
@@ -24,7 +24,7 @@ impl Hash for Md4 {
     {
         let mut input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
         // Pad our input to be a multiple of 64 bytes.
-        input.extend(super::md_padding_le(input.len()));
+        input.extend(Self::md_padding(input.len(), input.len()));
         unsafe { Self::sum_nopad_with_state(input.iter(), START) }
     }
     // Perform the hash function on the input bytes initialized with the provided state.
@@ -37,7 +37,7 @@ impl Hash for Md4 {
     {
         // Prepare input and state arrays.
         let input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
-        let state = hash::bytes_to_u32::<4>(state);
+        let state = hash::bytes_to_u32::<4>(state, u32::from_le_bytes);
 
         let (mut h0, mut h1, mut h2, mut h3) = (W(state[0]), W(state[1]), W(state[2]), W(state[3]));
         let (f, g, h) = (w(f), w(g), w(h));

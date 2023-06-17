@@ -47,12 +47,12 @@ pub fn md_padding(len: usize, encoded_size: [u8; 8]) -> impl Iterator<Item = u8>
 }
 
 // Helper function to convert [u8; N*4] to [u32; N].
-pub fn bytes_to_u32<const N: usize>(input: impl AsRef<[u8]>) -> [u32; N] {
+pub fn bytes_to_u32<const N: usize>(input: impl AsRef<[u8]>, f: fn([u8; 4]) -> u32) -> [u32; N] {
     let mut arr = [0; N];
     let mut iter = input.as_ref().into_iter().copied();
     let chunks = iter::from_fn(|| Some([iter.next()?, iter.next()?, iter.next()?, iter.next()?]));
     for (i, chunk) in chunks.enumerate() {
-        arr[i] = u32::from_be_bytes(chunk);
+        arr[i] = f(chunk);
     }
     arr
 }

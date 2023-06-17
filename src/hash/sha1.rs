@@ -39,7 +39,7 @@ impl Hash for Sha1 {
     {
         // Prepare input and state arrays.
         let input: Vec<_> = input.into_iter().map(|b| *b.borrow()).collect();
-        let state = hash::bytes_to_u32::<5>(state);
+        let state = hash::bytes_to_u32::<5>(state, u32::from_be_bytes);
 
         let (mut h0, mut h1, mut h2, mut h3, mut h4) = (
             W(state[0]),

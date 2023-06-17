@@ -1,7 +1,7 @@
 use crate::hash;
 use crate::hash::{Hash, MdPadding};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mac<H: Hash + MdPadding> {
     message: Vec<u8>,
     hash: H::Output,
@@ -48,7 +48,7 @@ impl<H: Hash + MdPadding> Mac<H> {
         };
 
         // Calculate the padding for the additional message, but encode the full message length.
-        let add_padding = hash::md_padding(add.len(), (total_length * 8).to_be_bytes());
+        let add_padding = H::md_padding(add.len(), total_length);
         // The new hash is a continuation of the original hash with the new message and padding.
         let hash = unsafe { H::sum_nopad_with_state(add.bytes().chain(add_padding), self.hash) };
         Self {

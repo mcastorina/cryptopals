@@ -785,4 +785,38 @@ mod tests {
             .unwrap();
         assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
     }
+
+    #[test]
+    fn md4_mac_prefix() {
+        use mac::Mac;
+        use md4::Md4;
+        let vuln = vuln::hash_prefix::new::<Md4>();
+
+        // Generate a MAC to a known plaintext.
+        let (cookie, mac) = vuln.cookie_for("hello").unwrap();
+        assert_eq!(vuln.is_admin(&cookie, &mac).unwrap(), false);
+
+        // Get the raw message and construct the MAC.
+        let message = cookie.b64_decode().collect::<Vec<_>>();
+        let message_length = message.len();
+        let mac: Mac<Md4> = Mac::from((
+            message,
+            mac.hex_decode().collect::<Vec<_>>().try_into().unwrap(),
+        ));
+
+        // Guess the length of the secret prefix up to 64 bytes.
+        let (new_message, new_mac) = (1..64)
+            .map(|length_guess| {
+                let (new_message, new_mac) = mac
+                    .extend_with(";admin=true", message_length + length_guess)
+                    .into();
+                (
+                    new_message.into_iter().b64_collect::<String>(),
+                    new_mac.into_iter().hex_collect::<String>(),
+                )
+            })
+            .find(|(new_message, new_mac)| vuln.is_admin(&new_message, &new_mac).is_ok())
+            .unwrap();
+        assert_eq!(vuln.is_admin(&new_message, &new_mac).unwrap(), true);
+    }
 }
