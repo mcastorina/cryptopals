@@ -742,7 +742,7 @@ mod tests {
 
     #[test]
     fn sha1_mac() {
-        use sha1::Sha1;
+        use hash::Sha1;
 
         let vuln_a = vuln::hash_prefix::new::<Sha1>();
         let vuln_b = vuln::hash_prefix::new::<Sha1>();
@@ -754,8 +754,8 @@ mod tests {
 
     #[test]
     fn sha1_mac_prefix() {
+        use hash::Sha1;
         use mac::Mac;
-        use sha1::Sha1;
         let vuln = vuln::hash_prefix::new::<Sha1>();
 
         // Generate a MAC to a known plaintext.
@@ -788,8 +788,8 @@ mod tests {
 
     #[test]
     fn md4_mac_prefix() {
+        use hash::Md4;
         use mac::Mac;
-        use md4::Md4;
         let vuln = vuln::hash_prefix::new::<Md4>();
 
         // Generate a MAC to a known plaintext.

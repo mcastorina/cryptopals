@@ -2,7 +2,8 @@ use crate::hash::{self, Hash, MdPadding};
 use std::borrow::Borrow;
 use std::num::Wrapping as W;
 
-pub type Md4 = [u8; 16];
+const HASH_SIZE: usize = 16;
+pub type Md4 = [u8; HASH_SIZE];
 
 #[rustfmt::skip]
 // Initial hash state.
@@ -14,6 +15,8 @@ const START: Md4 = [
 ];
 
 impl Hash for Md4 {
+    const OUTPUT_SIZE: usize = HASH_SIZE;
+    const BLOCK_SIZE: usize = 64;
     type Output = Self;
 
     // Perform the hash function on any arbitrary iterator of bytes.
@@ -42,7 +45,7 @@ impl Hash for Md4 {
         let (mut h0, mut h1, mut h2, mut h3) = (W(state[0]), W(state[1]), W(state[2]), W(state[3]));
         let (f, g, h) = (w(f), w(g), w(h));
 
-        for chunk in input.chunks_exact(64) {
+        for chunk in input.chunks_exact(Self::BLOCK_SIZE) {
             let mut words = [W(0); 16];
             for (i, bytes) in chunk.chunks_exact(4).enumerate() {
                 words[i] = W(u32::from_le_bytes(bytes.try_into().unwrap()));

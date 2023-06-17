@@ -1,4 +1,3 @@
-use crate::hash;
 use crate::hash::{Hash, MdPadding};
 
 #[derive(Debug, Clone)]

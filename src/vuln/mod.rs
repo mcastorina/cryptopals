@@ -9,4 +9,5 @@ pub mod ecb_prefix;
 pub mod ecb_suffix;
 pub mod fixed_ctr_nonce;
 pub mod hash_prefix;
+pub mod hmac_server;
 pub mod mt19937_stream;

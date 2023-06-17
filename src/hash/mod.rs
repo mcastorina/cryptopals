@@ -1,10 +1,15 @@
 pub mod md4;
 pub mod sha1;
 
+pub use md4::Md4;
+pub use sha1::Sha1;
+
 use std::borrow::Borrow;
 use std::iter;
 
 pub trait Hash {
+    const OUTPUT_SIZE: usize;
+    const BLOCK_SIZE: usize;
     type Output: Copy + AsRef<[u8]>;
 
     fn sum<I>(input: I) -> Self::Output

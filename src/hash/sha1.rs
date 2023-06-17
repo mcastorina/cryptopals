@@ -2,6 +2,7 @@ use crate::hash::{self, Hash, MdPadding};
 use std::borrow::Borrow;
 use std::num::Wrapping as W;
 
+const HASH_SIZE: usize = 20;
 pub type Sha1 = [u8; 20];
 
 #[rustfmt::skip]
@@ -15,6 +16,8 @@ const START: Sha1 = [
 ];
 
 impl Hash for Sha1 {
+    const OUTPUT_SIZE: usize = HASH_SIZE;
+    const BLOCK_SIZE: usize = 64;
     type Output = Self;
 
     // Perform the hash function on any arbitrary iterator of bytes.
@@ -49,7 +52,7 @@ impl Hash for Sha1 {
             W(state[4]),
         );
         // Operate on chunks of 512 bits (64 bytes).
-        for chunk in input.chunks_exact(64) {
+        for chunk in input.chunks_exact(Self::BLOCK_SIZE) {
             let mut words = [0; 80];
             for (i, bytes) in chunk.chunks_exact(4).enumerate() {
                 words[i] = u32::from_be_bytes(bytes.try_into().unwrap());
