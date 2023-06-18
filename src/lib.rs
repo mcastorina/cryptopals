@@ -881,17 +881,15 @@ mod tests {
                 let mut hmac = hmac.clone();
                 thread::spawn(move || {
                     hmac.push(*b as char);
-                    let duration: Duration = (0..5).map(|_| time_fn(|| vuln.verify(&file, &hmac)).1).sum();
+                    let duration: Duration = (0..5)
+                        .map(|_| time_fn(|| vuln.verify(&file, &hmac)).1)
+                        .sum();
                     tx.send((*b, duration)).unwrap();
                 });
             }
             drop(tx);
 
-            let b = rx
-                .iter()
-                .max_by_key(|&(_, d)| d)
-                .map(|(b, _)| b)
-                .unwrap();
+            let b = rx.iter().max_by_key(|&(_, d)| d).map(|(b, _)| b).unwrap();
             hmac.push(b as char);
         }
         assert_eq!(vuln.verify(&file, &hmac), true);
