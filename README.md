@@ -43,6 +43,7 @@ Spoilers ahead!
     * [Challenge 4-29: Break a SHA-1 keyed MAC using length extension](#challenge-4-29-break-a-sha-1-keyed-mac-using-length-extension)
     * [Challenge 4-30: Break an MD4 keyed MAC using length extension](#challenge-4-30-break-an-md4-keyed-mac-using-length-extension)
     * [Challenge 4-31: Implement and break HMAC-SHA1 with an artificial timing leak](#challenge-4-31-implement-and-break-hmac-sha1-with-an-artificial-timing-leak)
+    * [Challenge 4-32: Break HMAC-SHA1 with a slightly less artificial timing leak](#challenge-4-32-break-hmac-sha1-with-a-slightly-less-artificial-timing-leak)
 
 
 ## Learnings
@@ -1466,4 +1467,41 @@ fn hmac_time_parallel() {
     }
     assert_eq!(vuln.verify(&file, &hmac), true);
 }
+```
+
+
+### Challenge 4-32: Break HMAC-SHA1 with a slightly less artificial timing leak
+
+[Challenge link](https://cryptopals.com/sets/4/challenges/32)
+
+Not sure what the goal was here or if I did it wrong, but all I changed was
+taking multiple measurements and adding them together.
+
+```diff
+diff --git a/src/lib.rs b/src/lib.rs
+index e6466f9..2d5a778 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -881,7 +880,7 @@ mod tests {
+                 let mut hmac = hmac.clone();
+                 thread::spawn(move || {
+                     hmac.push(*b as char);
+-                    let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
++                    let duration: Duration = (0..5).map(|_| time_fn(|| vuln.verify(&file, &hmac)).1).sum();
+                     tx.send((*b, duration)).unwrap();
+                 });
+             }
+diff --git a/src/vuln/hmac_server.rs b/src/vuln/hmac_server.rs
+index 35a1d1c..ba14aa4 100644
+--- a/src/vuln/hmac_server.rs
++++ b/src/vuln/hmac_server.rs
+@@ -32,7 +32,7 @@ impl VulnHmacServer {
+             if l != r {
+                 return false;
+             }
+-            thread::sleep(Duration::from_millis(50));
++            thread::sleep(Duration::from_millis(1));
+         }
+         a.len() == b.len()
+     }
 ```

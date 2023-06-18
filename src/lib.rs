@@ -881,7 +881,7 @@ mod tests {
                 let mut hmac = hmac.clone();
                 thread::spawn(move || {
                     hmac.push(*b as char);
-                    let duration = time_fn(|| vuln.verify(&file, &hmac)).1;
+                    let duration: Duration = (0..5).map(|_| time_fn(|| vuln.verify(&file, &hmac)).1).sum();
                     tx.send((*b, duration)).unwrap();
                 });
             }

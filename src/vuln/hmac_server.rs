@@ -32,7 +32,7 @@ impl VulnHmacServer {
             if l != r {
                 return false;
             }
-            thread::sleep(Duration::from_millis(50));
+            thread::sleep(Duration::from_millis(1));
         }
         a.len() == b.len()
     }
