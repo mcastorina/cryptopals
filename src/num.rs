@@ -88,14 +88,20 @@ impl Add for BigNum {
 
 impl PartialEq for BigNum {
     fn eq(&self, other: &Self) -> bool {
-        let (xor, or) = zip_longest(self.num.iter().copied(), other.num.iter().copied())
-            .fold((0, 0), |(xor, or), (a, b)| (xor | (a ^ b), or | a | b));
+        let mut or = 0;
+        for (a, b) in zip_longest(self.num.iter().copied(), other.num.iter().copied()) {
+            if a != b {
+                return false;
+            }
+            or = or | a | b;
+        }
+        // At this point, all elements are equal. We need to check for 0 and matching signs.
 
         if or == 0 {
             // All elements are 0, so they are equal regardless of sign.
             return true;
         }
-        xor == 0 && self.neg == other.neg
+        self.neg == other.neg
     }
 }
 
