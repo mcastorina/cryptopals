@@ -4,6 +4,7 @@ mod freq;
 mod hash;
 mod hex;
 mod mac;
+mod num;
 mod rng;
 mod vuln;
 mod xor;
