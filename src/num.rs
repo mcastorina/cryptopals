@@ -1,9 +1,9 @@
 use std::cmp::{self, Ordering};
 use std::iter;
-use std::ops::{Add, Neg, Sub};
+use std::ops::{Add, Mul, Neg, Sub};
 
 // Stored as little endian (first byte is smallest).
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 struct BigNum {
     neg: bool,
     num: Vec<u8>,
@@ -83,6 +83,30 @@ impl Add for BigNum {
         }
         output.push(carry);
         Self::from((false, output))
+    }
+}
+
+impl Mul for BigNum {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self::Output {
+        let mut total = BigNum::from(0);
+        for (shift, x) in self.num.iter().enumerate() {
+            let mut step = BigNum {
+                neg: false,
+                num: vec![0; shift],
+            };
+            let mut carry = 0;
+            for y in &other.num {
+                let result = (*x as u16) * (*y as u16) + carry;
+                step.num.push((result & 0xff) as u8);
+                carry = result >> 8;
+            }
+            step.num.push((carry & 0xff) as u8);
+            total = total + step;
+        }
+        total.neg = self.neg ^ other.neg;
+        total
     }
 }
 
@@ -256,6 +280,32 @@ mod tests {
             big_num!(-1337, 3, -1340),
         ] {
             assert_eq!(a - b, expected);
+        }
+    }
+
+    #[test]
+    fn test_mul() {
+        for (a, b, expected) in [
+            big_num!(0, 123, 0),
+            big_num!(1, 2, 2),
+            big_num!(120491, 8589320, 1034935756120_u128),
+            big_num!(
+                u128::MAX,
+                u128::MAX,
+                (
+                    false,
+                    vec![
+                        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                    ]
+                )
+            ),
+            big_num!(-123, 2, -246),
+            big_num!(-1, -3, 3),
+        ] {
+            assert_eq!(a.clone() * b.clone(), expected);
+            assert_eq!(b * a, expected);
         }
     }
 }
