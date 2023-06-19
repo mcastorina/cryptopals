@@ -1,6 +1,6 @@
 use std::cmp::{self, Ordering};
 use std::iter;
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Mul, Neg, Shl, Shr, Sub};
 
 // Stored as little endian (first byte is smallest).
 #[derive(Debug, Default, Clone)]
@@ -107,6 +107,41 @@ impl Mul for BigNum {
         }
         total.neg = self.neg ^ other.neg;
         total
+    }
+}
+
+impl Shl<u16> for BigNum {
+    type Output = Self;
+
+    fn shl(mut self, rhs: u16) -> Self::Output {
+        let (buckets, ofs) = (rhs / 8, rhs % 8);
+        let mask = (1_u8 << ofs) - 1;
+        let mut num = vec![0_u8; buckets as usize];
+        let mut carry = 0;
+        for b in self.num {
+            num.push((b << ofs) | carry);
+            carry = b.rotate_left(ofs.into()) & mask;
+        }
+        num.push(carry);
+        self.num = num;
+        self
+    }
+}
+
+impl Shr<u16> for BigNum {
+    type Output = Self;
+
+    fn shr(mut self, rhs: u16) -> Self::Output {
+        let (buckets, ofs) = (rhs / 8, rhs % 8);
+        let mask = (1_u8 << ofs) - 1;
+        let mut num = Vec::with_capacity(self.num.len() - buckets as usize);
+        for (i, b) in self.num.iter().enumerate().skip(buckets as usize) {
+            let carry = self.num.get(i + 1).unwrap_or(&0) & mask;
+            let b = (b >> ofs) | (carry.rotate_right(ofs.into()));
+            num.push(b);
+        }
+        self.num = num;
+        self
     }
 }
 
@@ -307,5 +342,46 @@ mod tests {
             assert_eq!(a.clone() * b.clone(), expected);
             assert_eq!(b * a, expected);
         }
+    }
+
+    #[test]
+    fn test_shl() {
+        for i in 0..128 {
+            assert_eq!(BigNum::from(1) << i, BigNum::from(1_u128 << i));
+            assert_eq!(BigNum::from(0) << i, BigNum::from(0));
+            assert_eq!(BigNum::from(i) << 0, BigNum::from(i));
+            if i < 120 {
+                assert_eq!(BigNum::from(0xa5) << i, BigNum::from(0xa5_u128 << i));
+            }
+        }
+        assert_eq!(
+            BigNum::from_raw([1, 2, 3]) << 256,
+            BigNum::from_raw(
+                iter::repeat(0)
+                    .take(32)
+                    .chain([1, 2, 3])
+                    .collect::<Vec<_>>(),
+            ),
+        );
+    }
+
+    #[test]
+    fn test_shr() {
+        const pattern: u128 = 0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5;
+        for i in 0..128 {
+            assert_eq!(BigNum::from(u128::MAX) >> i, BigNum::from(u128::MAX >> i));
+            assert_eq!(BigNum::from(0) >> i, BigNum::from(0));
+            assert_eq!(BigNum::from(i) >> 0, BigNum::from(i));
+            assert_eq!(BigNum::from(pattern) >> i, BigNum::from(pattern >> i));
+        }
+        assert_eq!(
+            BigNum::from_raw(
+                iter::repeat(0)
+                    .take(32)
+                    .chain([1, 2, 3])
+                    .collect::<Vec<_>>(),
+            ) >> 256,
+            BigNum::from_raw([1, 2, 3]),
+        );
     }
 }
