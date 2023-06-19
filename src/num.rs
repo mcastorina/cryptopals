@@ -133,6 +133,11 @@ impl Shr<u16> for BigNum {
 
     fn shr(mut self, rhs: u16) -> Self::Output {
         let (buckets, ofs) = (rhs / 8, rhs % 8);
+        if buckets as usize >= self.num.len() {
+            // We are shifting more than the data we have.
+            self.num.clear();
+            return self;
+        }
         let mask = (1_u8 << ofs) - 1;
         let mut num = Vec::with_capacity(self.num.len() - buckets as usize);
         for (i, b) in self.num.iter().enumerate().skip(buckets as usize) {
@@ -367,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_shr() {
-        const pattern: u128 = 0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5;
+        const pattern: u128 = 0xf3209a08ab02891283e51e278e07e456;
         for i in 0..128 {
             assert_eq!(BigNum::from(u128::MAX) >> i, BigNum::from(u128::MAX >> i));
             assert_eq!(BigNum::from(0) >> i, BigNum::from(0));
