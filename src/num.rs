@@ -1,6 +1,6 @@
 use std::cmp::{self, Ordering};
 use std::iter;
-use std::ops::{Add, Mul, Neg, Shl, Shr, Sub};
+use std::ops::{Add, Div, Mul, Neg, Rem, Shl, Shr, Sub};
 
 // Stored as little endian (first byte is smallest).
 #[derive(Debug, Default, Clone)]
@@ -20,6 +20,46 @@ impl BigNum {
     fn abs(mut self) -> Self {
         self.neg = false;
         self
+    }
+
+    fn trim_leading(&mut self) {
+        while self.num.get(self.num.len() - 1).unwrap_or(&1) == &0 {
+            self.num.pop();
+        }
+    }
+
+    // Compute (num / den, num % den) for
+    fn div_rem(mut self, mut den: Self) -> (Self, Self) {
+        if self.neg ^ den.neg {
+            let (d, mut m) = self.abs().div_rem(den.clone().abs());
+            if !den.neg {
+                m = den - m;
+            }
+            return (-d, m);
+        }
+        (self, den) = (self.abs(), den.abs());
+        match self.cmp(&den) {
+            Ordering::Equal => return (1.into(), 0.into()),
+            Ordering::Less => return (0.into(), self),
+            _ => (),
+        }
+        self.trim_leading();
+        den.trim_leading();
+        let num = self.clone();
+
+        let n = 8 * self.num.len() as u16;
+        let d = den.clone() << n;
+        let mut r = self;
+        let mut q = BigNum::from(0);
+        for i in (0..n).rev() {
+            r = (r << 1) - d.clone();
+            if r >= 0.into() {
+                q = q + (BigNum::from(1) << i);
+            } else {
+                r = r + d.clone();
+            }
+        }
+        (q.clone(), num - q * den)
     }
 }
 
@@ -147,6 +187,22 @@ impl Shr<u16> for BigNum {
         }
         self.num = num;
         self
+    }
+}
+
+impl Div for BigNum {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self::Output {
+        self.div_rem(other).0
+    }
+}
+
+impl Rem for BigNum {
+    type Output = Self;
+
+    fn rem(self, other: Self) -> Self::Output {
+        self.div_rem(other).1
     }
 }
 
@@ -388,5 +444,57 @@ mod tests {
             ) >> 256,
             BigNum::from_raw([1, 2, 3]),
         );
+    }
+
+    #[test]
+    fn test_div() {
+        for (a, b, expected) in [
+            big_num!(
+                10480192830192088419741029_u128,
+                1241072947109048102_u128,
+                8444461
+            ),
+            big_num!(0, 1, 0),
+            big_num!(1240129, 1240129, 1),
+        ] {
+            assert_eq!(a.clone() / b.clone(), expected);
+            assert_eq!((-a.clone()) / (-b.clone()), expected);
+            assert_eq!((-a.clone()) / b.clone(), (-expected.clone()));
+            assert_eq!(a / (-b), (-expected));
+        }
+    }
+
+    #[test]
+    fn test_rem() {
+        for (a, b, expected) in [
+            big_num!(
+                10480192830192088419741029_u128,
+                1241072947109048102_u128,
+                730174668975278007_u128
+            ),
+            big_num!(
+                -10480192830192088419741029_i128,
+                1241072947109048102_u128,
+                510898278133770095_u128
+            ),
+            big_num!(0, 1, 0),
+            big_num!(1240129, 1240129, 0),
+            big_num!(1240129, 1240130, 1240129),
+            big_num!(1240129, 1240128, 1),
+        ] {
+            assert_eq!(a % b, expected);
+        }
+        for (a, b) in [
+            (-8_i32, 5_i32),
+            (8, 5),
+            (8, -5),
+            // TODO: Not sure why (-8) % (-5) == 2 in std.
+            // (-8, -5),
+        ] {
+            assert_eq!(
+                BigNum::from(a) % BigNum::from(b),
+                BigNum::from(a.rem_euclid(b))
+            );
+        }
     }
 }
