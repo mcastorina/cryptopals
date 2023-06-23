@@ -13,8 +13,11 @@ where
 {
     // Get the next nibble from the upstream iterator. This function panics if it's not a hex
     // digit. If there are no more items, None is returned.
-    fn next_nibble(&mut self) -> Option<u8> {
-        let c = self.upstream.next()?.into();
+    fn next_nibble<F>(mut source: F) -> Option<u8>
+    where
+        F: FnMut() -> Option<I::Item>,
+    {
+        let c = source()?.into();
         // Intentionally panic if it's not a hex digit.
         Some(c.to_digit(16).expect("not a hex digit") as u8)
     }
@@ -29,10 +32,26 @@ where
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let n1 = self.next_nibble()?;
+        let mut next = || self.upstream.next();
+        let n1 = Self::next_nibble(&mut next)?;
         // Intentionally panic if it's an odd length string.
-        let n2 = self.next_nibble().expect("unexpected odd length string");
+        let n2 = Self::next_nibble(&mut next).expect("unexpected odd length string");
         Some(n1 << 4 | n2)
+    }
+}
+
+// Implement Iterator trait for HexDecoder.
+impl<I> DoubleEndedIterator for HexDecoder<I>
+where
+    I: DoubleEndedIterator,
+    I::Item: Into<char>,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let mut next_back = || self.upstream.next_back();
+        let n1 = Self::next_nibble(&mut next_back)?;
+        // Zero pad if we only find one nibble.
+        let n2 = Self::next_nibble(&mut next_back).unwrap_or(0);
+        Some(n2 << 4 | n1)
     }
 }
 
