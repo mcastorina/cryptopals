@@ -1,3 +1,4 @@
+use crate::hex::*;
 use std::cmp::{self, Ordering};
 use std::iter;
 use std::ops::{Add, Div, Mul, Neg, Rem, Shl, Shr, Sub};
@@ -14,6 +15,13 @@ impl BigNum {
         Self {
             neg: false,
             num: data.as_ref().to_vec(),
+        }
+    }
+
+    fn from_hex(input: impl AsRef<str>) -> Self {
+        Self {
+            neg: false,
+            num: input.as_ref().hex_decode().rev().collect(),
         }
     }
 
@@ -60,6 +68,33 @@ impl BigNum {
             }
         }
         (q.clone(), num - q * den)
+    }
+
+    fn exp_rem(mut self, mut exp: Self, modulus: Self) -> Self {
+        // Sanity check:  Verify that the exponent is not negative:
+        assert!(exp >= BigNum::from(0));
+
+        if exp == BigNum::from(0) {
+            return BigNum::from(1);
+        }
+
+        // Now do the modular exponentiation algorithm:
+        let mut result = BigNum::from(1);
+        let mut base = self % modulus.clone();
+
+        // Loop until we can return out result:
+        loop {
+            if exp.clone() % BigNum::from(2) == BigNum::from(1) {
+                result = (result * base.clone()) % modulus.clone();
+            }
+
+            if exp == BigNum::from(1) {
+                return result;
+            }
+
+            exp = exp >> 1;
+            base = (base.clone() * base.clone()) % modulus.clone();
+        }
     }
 }
 
@@ -302,6 +337,12 @@ impl From<(bool, Vec<u8>)> for BigNum {
     }
 }
 
+impl From<Vec<u8>> for BigNum {
+    fn from(num: Vec<u8>) -> Self {
+        BigNum::from((false, num))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,5 +537,16 @@ mod tests {
                 BigNum::from(a.rem_euclid(b))
             );
         }
+    }
+
+    #[test]
+    fn test_exp_rem() {
+        use crate::hex::*;
+        let a = BigNum::from_hex("6ed80fface4df443c2e9a56155272b9004e01f5dabe5f2181a603da3eb");
+        let b = BigNum::from_hex("5737df12ecacc95ff94e28463b3cd1de0c674cb5d079bd3f4c037e48ff");
+        let m = BigNum::from_hex("1d6329f1c35ca4bfabb9f5610000000000");
+        let expected = BigNum::from_hex("47cf5cc72a26166f482742959483cf0c3");
+
+        assert_eq!(a.exp_rem(b, m), expected);
     }
 }
